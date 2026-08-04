@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Drive Intelligence — File Analysis with Claude</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --blue: #1967D2;
+      --blue-light: #E8F0FE;
+      --blue-mid: #4285F4;
+      --green: #34A853;
+      --green-light: #E6F4EA;
+      --red: #EA4335;
+      --red-light: #FCE8E6;
+      --yellow: #FBBC04;
+      --yellow-light: #FEF7E0;
+      --gray-50: #F8F9FA;
+      --gray-100: #F1F3F4;
+      --gray-200: #E8EAED;
+      --gray-400: #BDC1C6;
+      --gray-600: #80868B;
+      --gray-800: #3C4043;
+      --gray-900: #202124;
+      --white: #FFFFFF;
+      --radius: 8px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--gray-50);
+      color: var(--gray-900);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* Header */
+    .header {
+      background: var(--white);
+      border-bottom: 1px solid var(--gray-200);
+      padding: 0 2rem;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--blue);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .header-icon svg { width: 18px; height: 18px; fill: white; }
+    .header-title { font-size: 16px; font-weight: 600; color: var(--gray-900); }
+    .header-sub { font-size: 12px; color: var(--gray-600); margin-top: 1px; }
+    .header-badge {
+      font-size: 11px;
+      background: var(--blue-light);
+      color: var(--blue);
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+
+    /* Layout */
+    .layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 0;
+      min-height: calc(100vh - 56px);
+    }
+    .sidebar {
+      background: var(--white);
+      border-right: 1px solid var(--gray-200);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      overflow-y: auto;
+    }
+    .main {
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      overflow-y: auto;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      border-radius: 12px;
+      padding: 1.25rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--gray-600);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: .875rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .card-title-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--blue);
+    }
+
+    /* Form elements */
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--gray-800);
+      margin-bottom: 5px;
+    }
+    input[type=text], textarea {
+      width: 100%;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      padding: .55rem .75rem;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      color: var(--gray-900);
+      background: var(--white);
+      outline: none;
+      transition: border .15s, box-shadow .15s;
+    }
+    input[type=text]:focus, textarea:focus {
+      border-color: var(--blue-mid);
+      box-shadow: 0 0 0 3px rgba(66,133,244,.15);
+    }
+    input[type=text]::placeholder, textarea::placeholder { color: var(--gray-400); }
+    .input-hint {
+      font-size: 11px;
+      color: var(--gray-600);
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+    textarea {
+      font-family: 'Inter', sans-serif;
+      resize: vertical;
+      min-height: 110px;
+      line-height: 1.6;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: all .15s;
+      padding: .55rem 1rem;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--blue);
+      color: white;
+      width: 100%;
+      padding: .65rem;
+    }
+    .btn-primary:hover { background: #1557B0; }
+    .btn-primary:active { transform: scale(.98); }
+    .btn-primary:disabled { background: var(--gray-200); color: var(--gray-600); cursor: not-allowed; transform: none; }
+    .btn-secondary {
+      background: var(--white);
+      color: var(--gray-800);
+      border: 1px solid var(--gray-200);
+    }
+    .btn-secondary:hover { background: var(--gray-50); border-color: var(--gray-400); }
+    .btn-green { background: var(--green); color: white; }
+    .btn-green:hover { background: #2D9249; }
+
+    /* Pipeline status */
+    .pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .pip-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: .5rem .75rem;
+      border-radius: var(--radius);
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      transition: all .3s;
+    }
+    .pip-item.active {
+      background: var(--blue-light);
+      border-color: #C5D8F7;
+    }
+    .pip-item.done {
+      background: var(--green-light);
+      border-color: #CEEAD6;
+    }
+    .pip-item.error {
+      background: var(--red-light);
+      border-color: #F5C6C3;
+    }
+    .pip-indicator {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--gray-400);
+      flex-shrink: 0;
+      transition: background .3s;
+    }
+    .pip-item.active .pip-indicator {
+      background: var(--blue);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .pip-item.done .pip-indicator { background: var(--green); }
+    .pip-item.error .pip-indicator { background: var(--red); }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .6; transform: scale(1.3); }
+    }
+    .pip-text {
+      font-size: 12px;
+      color: var(--gray-600);
+      font-weight: 400;
+    }
+    .pip-item.active .pip-text { color: var(--blue); font-weight: 500; }
+    .pip-item.done .pip-text { color: var(--green); font-weight: 500; }
+    .pip-item.error .pip-text { color: var(--red); }
+
+    /* Metadata table */
+    .meta-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    thead th {
+      text-align: left;
+      padding: .5rem .75rem;
+      color: var(--gray-600);
+      font-weight: 500;
+      border-bottom: 1px solid var(--gray-200);
+      white-space: nowrap;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    tbody td {
+      padding: .5rem .75rem;
+      border-bottom: 1px solid var(--gray-100);
+      color: var(--gray-800);
+      vertical-align: middle;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: var(--gray-50); }
+    .td-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .badge-blue { background: var(--blue-light); color: var(--blue); }
+    .badge-red { background: var(--red-light); color: var(--red); }
+    .badge-yellow { background: var(--yellow-light); color: #B06000; }
+    .badge-green { background: var(--green-light); color: var(--green); }
+    .badge-gray { background: var(--gray-100); color: var(--gray-600); }
+
+    /* Analysis output */
+    .analysis-box {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      padding: 1rem 1.1rem;
+      font-size: 13px;
+      line-height: 1.8;
+      color: var(--gray-800);
+      white-space: pre-wrap;
+      min-height: 120px;
+      font-family: 'Inter', sans-serif;
+    }
+    .analysis-empty {
+      color: var(--gray-400);
+      font-style: italic;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    /* Stats row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: .75rem;
+    }
+    .stat-card {
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      padding: .75rem;
+      text-align: center;
+    }
+    .stat-num {
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--gray-900);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .stat-label { font-size: 11px; color: var(--gray-600); }
+
+    /* Actions row */
+    .actions-row {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: .75rem;
+    }
+
+    /* Empty / hidden */
+    .hidden { display: none !important; }
+    .divider {
+      border: none;
+      border-top: 1px solid var(--gray-200);
+      margin: .25rem 0;
+    }
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--gray-600);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: .5rem;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1.5rem;
+      color: var(--gray-600);
+    }
+    .empty-state-icon {
+      font-size: 40px;
+      margin-bottom: 1rem;
+      opacity: .4;
+    }
+    .empty-state h3 { font-size: 15px; font-weight: 500; color: var(--gray-800); margin-bottom: .4rem; }
+    .empty-state p { font-size: 13px; line-height: 1.6; }
+
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { border-right: none; border-bottom: 1px solid var(--gray-200); }
+      .stats-row { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-brand">
+    <div class="header-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </div>
+    <div>
+      <div class="header-title">Drive Intelligence</div>
+      <div class="header-sub">Google Drive × Claude — File Analysis</div>
+    </div>
+  </div>
+  <span class="header-badge">PoC v1.0</span>
+</header>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+
+    <!-- Configuration -->
+    <div>
+      <div class="section-label">Configuration</div>
+      <div style="display:flex;flex-direction:column;gap:.75rem">
+        <div>
+          <label for="api-key">Google Drive API Key</label>
+          <input type="text" id="api-key" placeholder="AIzaSy..." value="AIzaSyA6T8j7XHvpnw-GoBLI6mJ8dLP2hBQxwrE"/>
+          <p class="input-hint">Pre-configured for this PoC. Change if needed.</p>
+        </div>
+        <div>
+          <label for="folder-url">Google Drive Folder URL</label>
+          <input type="text" id="folder-url" placeholder="https://drive.google.com/drive/folders/..."/>
+          <p class="input-hint">Paste a publicly shared folder link.</p>
+        </div>
+        <button class="btn btn-primary" id="fetch-btn" onclick="fetchMetadata()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Fetch files from Drive
+        </button>
+      </div>
+    </div>
+
+    <hr class="divider"/>
+
+    <!-- Pipeline -->
+    <div>
+      <div class="section-label">Status</div>
+      <div class="pipeline">
+        <div class="pip-item active" id="pip-1">
+          <div class="pip-indicator"></div>
+          <span class="pip-text">Enter folder URL</span>
+        </div>
+        <div class="pip-item" id="pip-2">
+          <div class="pip-indicator"></div>
+          <span class="pip-text">Fetch metadata from Drive</span>
+        </div>
+        <div class="pip-item" id="pip-3">
+          <div class="pip-indicator"></div>
+          <span class="pip-text">Configure analysis prompt</span>
+        </div>
+        <div class="pip-item" id="pip-4">
+          <div class="pip-indicator"></div>
+          <span class="pip-text">Analyze with Claude</span>
+        </div>
+        <div class="pip-item" id="pip-5">
+          <div class="pip-indicator"></div>
+          <span class="pip-text">Results ready</span>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider"/>
+
+    <!-- Prompt editor -->
+    <div id="prompt-section">
+      <div class="section-label">Analysis Prompt</div>
+      <textarea id="user-prompt">Analyze the metadata of the following files from a shared folder and identify:
+
+1. Duplicate or near-duplicate files (e.g. Final_v2, FINAL_approved, copy of...)
+2. Potentially outdated files (not modified in over a year)
+3. Groups of files that appear to be versions of the same document
+4. Recommended action for each file: Keep, Archive, or Review with owner
+
+Be specific — mention exact file names and explain your reasoning clearly.</textarea>
+      <p class="input-hint" style="margin-top:5px">Edit this prompt to change what Claude looks for.</p>
+      <button class="btn btn-primary" id="analyze-btn" onclick="analyzeWithClaude()" style="margin-top:.75rem" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        Analyze with Claude
+      </button>
+      <div id="analyze-status" style="font-size:11px;color:var(--gray-600);margin-top:5px;min-height:16px;font-family:'JetBrains Mono',monospace"></div>
+    </div>
+
+    <!-- Reset -->
+    <button class="btn btn-secondary" onclick="resetAll()" style="margin-top:auto">↺ Start over</button>
+
+  </aside>
+
+  <!-- Main content -->
+  <main class="main">
+
+    <!-- Empty state -->
+    <div id="empty-state" class="card">
+      <div class="empty-state">
+        <div class="empty-state-icon">📂</div>
+        <h3>No folder connected yet</h3>
+        <p>Paste a public Google Drive folder URL in the sidebar and click <strong>Fetch files from Drive</strong> to get started.</p>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div id="stats-section" class="hidden">
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-num" id="stat-total">0</div>
+          <div class="stat-label">Files found</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="stat-flagged" style="color:var(--yellow)">0</div>
+          <div class="stat-label">Version signals</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="stat-old" style="color:var(--red)">0</div>
+          <div class="stat-label">Older than 1yr</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Metadata table -->
+    <div id="metadata-section" class="card hidden">
+      <div class="card-title">
+        <div class="card-title-dot"></div>
+        File Metadata
+        <span id="file-count" style="margin-left:auto;font-size:11px;background:var(--blue-light);color:var(--blue);padding:2px 9px;border-radius:20px;font-weight:500;text-transform:none;letter-spacing:0"></span>
+      </div>
+      <div class="meta-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Size</th>
+              <th>Last modified</th>
+              <th>Signals</th>
+            </tr>
+          </thead>
+          <tbody id="meta-body"></tbody>
+        </table>
+      </div>
+      <div class="actions-row">
+        <button class="btn btn-secondary" onclick="downloadJSON('meta')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download metadata JSON
+        </button>
+      </div>
+    </div>
+
+    <!-- Analysis results -->
+    <div id="results-section" class="card hidden">
+      <div class="card-title">
+        <div class="card-title-dot" style="background:var(--green)"></div>
+        Claude's Analysis
+      </div>
+      <div class="analysis-box" id="analysis-out">
+        <div class="analysis-empty">Analysis will appear here after you click "Analyze with Claude"</div>
+      </div>
+      <div class="actions-row">
+        <button class="btn btn-secondary" onclick="downloadJSON('full')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download full report JSON
+        </button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  let files = [];
+  let fullPayload = {};
+
+  function extractFolderID(url) {
+    const m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+    return m ? m[1] : null;
+  }
+
+  function sizeLabel(bytes) {
+    if (!bytes || bytes === '0') return '—';
+    const b = parseInt(bytes);
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return Math.round(b / 1024) + ' KB';
+    return (b / 1048576).toFixed(1) + ' MB';
+  }
+
+  function mimeLabel(mime) {
+    const map = {
+      'application/vnd.google-apps.folder': 'folder',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+      'application/pdf': 'pdf',
+      'application/vnd.google-apps.document': 'gdoc',
+      'application/vnd.google-apps.spreadsheet': 'gsheet',
+      'application/vnd.google-apps.presentation': 'gslides',
+      'text/plain': 'txt',
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+    };
+    if (map[mime]) return map[mime];
+    const parts = mime.split('/');
+    return parts[parts.length - 1].split('.').pop().substring(0, 6);
+  }
+
+  function badgeColor(type) {
+    if (['docx','gdoc','txt'].includes(type)) return 'badge-blue';
+    if (['xlsx','gsheet'].includes(type)) return 'badge-green';
+    if (['pptx','gslides'].includes(type)) return 'badge-yellow';
+    if (type === 'pdf') return 'badge-red';
+    return 'badge-gray';
+  }
+
+  function versionSignals(name) {
+    const n = name.toLowerCase();
+    const tags = [];
+    if (/final|approved|v\d+|copy|old|backup|draft|new|revised|updated|temp/.test(n))
+      tags.push('<span class="badge badge-yellow">version</span>');
+    return tags.join(' ') || '—';
+  }
+
+  function isOld(modified) {
+    if (!modified) return false;
+    return (Date.now() - new Date(modified)) > 365 * 24 * 60 * 60 * 1000;
+  }
+
+  function setPipeline(active, errorStep) {
+    for (let i = 1; i <= 5; i++) {
+      const el = document.getElementById('pip-' + i);
+      el.className = 'pip-item' +
+        (i < active ? ' done' : i === active ? ' active' : '') +
+        (i === errorStep ? ' error' : '');
+    }
+  }
+
+  function setAnalyzeStatus(msg, color) {
+    const el = document.getElementById('analyze-status');
+    el.textContent = msg;
+    el.style.color = color || 'var(--gray-600)';
+  }
+
+  function show(id) { document.getElementById(id).classList.remove('hidden'); }
+  function hide(id) { document.getElementById(id).classList.add('hidden'); }
+
+  async function fetchMetadata() {
+    const apiKey = document.getElementById('api-key').value.trim();
+    const folderUrl = document.getElementById('folder-url').value.trim();
+    if (!apiKey || !folderUrl) {
+      alert('Please enter both the API key and a folder URL.');
+      return;
+    }
+    const folderID = extractFolderID(folderUrl);
+    if (!folderID) {
+      alert('Could not extract folder ID from that URL. Make sure it contains /folders/...');
+      return;
+    }
+
+    const btn = document.getElementById('fetch-btn');
+    btn.disabled = true;
+    btn.textContent = 'Fetching...';
+    setPipeline(2);
+    hide('empty-state');
+
+    try {
+      const url = `https://www.googleapis.com/drive/v3/files?q='${folderID}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,createdTime,owners)&key=${apiKey}&pageSize=100`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || 'API error');
+      }
+      const data = await res.json();
+      files = (data.files || []).filter(f => f.mimeType !== 'application/vnd.google-apps.folder');
+
+      if (!files.length) {
+        alert('No files found in this folder. Make sure the folder is shared publicly.');
+        setPipeline(1);
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Fetch files from Drive';
+        return;
+      }
+
+      fullPayload = { folder_url: folderUrl, fetched_at: new Date().toISOString(), files };
+      renderTable(files);
+      updateStats(files);
+      show('stats-section');
+      show('metadata-section');
+      show('results-section');
+      document.getElementById('analyze-btn').disabled = false;
+      setPipeline(3);
+      document.getElementById('file-count').textContent = files.length + ' files';
+    } catch (e) {
+      alert('Error fetching from Google Drive: ' + e.message + '\n\nMake sure:\n1. The folder is shared publicly\n2. The Google Drive API is enabled\n3. The API key is correct');
+      setPipeline(1, 2);
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Fetch files from Drive';
+  }
+
+  function renderTable(data) {
+    const tbody = document.getElementById('meta-body');
+    tbody.innerHTML = '';
+    data.forEach(f => {
+      const type = mimeLabel(f.mimeType);
+      const old = isOld(f.modifiedTime);
+      const modified = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="td-name" title="${f.name}">${f.name}</td>
+        <td><span class="badge ${badgeColor(type)}">${type}</span></td>
+        <td style="color:var(--gray-600);font-family:'JetBrains Mono',monospace;font-size:11px">${sizeLabel(f.size)}</td>
+        <td style="color:${old ? 'var(--red)' : 'var(--gray-800)'};font-size:12px">${modified}</td>
+        <td>${versionSignals(f.name)}${old ? ' <span class="badge badge-red">+1yr</span>' : ''}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function updateStats(data) {
+    const flagged = data.filter(f => /final|approved|v\d+|copy|old|backup|draft|new|revised|updated|temp/i.test(f.name)).length;
+    const old = data.filter(f => isOld(f.modifiedTime)).length;
+    document.getElementById('stat-total').textContent = data.length;
+    document.getElementById('stat-flagged').textContent = flagged;
+    document.getElementById('stat-old').textContent = old;
+  }
+
+  async function analyzeWithClaude() {
+    const prompt = document.getElementById('user-prompt').value.trim();
+    if (!prompt || !files.length) return;
+
+    const btn = document.getElementById('analyze-btn');
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+    setPipeline(4);
+    setAnalyzeStatus('Sending to Claude...', 'var(--blue)');
+
+    const metaText = files.map(f => {
+      const type = mimeLabel(f.mimeType);
+      const size = sizeLabel(f.size);
+      const modified = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('en-US') : 'unknown';
+      const created = f.createdTime ? new Date(f.createdTime).toLocaleDateString('en-US') : 'unknown';
+      const old = isOld(f.modifiedTime) ? ' [OLDER THAN 1 YEAR]' : '';
+      return `- ${f.name} | type: ${type} | size: ${size} | created: ${created} | modified: ${modified}${old}`;
+    }).join('\n');
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1000,
+          messages: [{ role: 'user', content: `${prompt}\n\nFile metadata:\n${metaText}` }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.find(b => b.type === 'text')?.text || 'No response received.';
+
+      document.getElementById('analysis-out').textContent = text;
+      fullPayload.prompt = prompt;
+      fullPayload.analysis = text;
+      fullPayload.analyzed_at = new Date().toISOString();
+
+      setPipeline(5);
+      setAnalyzeStatus('✓ Analysis complete', 'var(--green)');
+    } catch (e) {
+      setAnalyzeStatus('Error connecting to Claude', 'var(--red)');
+      setPipeline(3, 4);
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg> Analyze with Claude';
+  }
+
+  function downloadJSON(type) {
+    const data = type === 'meta' ? { fetched_at: fullPayload.fetched_at, files: fullPayload.files } : fullPayload;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = type === 'meta' ? 'drive-metadata.json' : 'drive-analysis.json';
+    a.click();
+  }
+
+  function resetAll() {
+    files = []; fullPayload = {};
+    document.getElementById('folder-url').value = '';
+    document.getElementById('meta-body').innerHTML = '';
+    document.getElementById('analysis-out').innerHTML = '<div class="analysis-empty">Analysis will appear here after you click "Analyze with Claude"</div>';
+    document.getElementById('analyze-btn').disabled = true;
+    ['stats-section', 'metadata-section', 'results-section'].forEach(hide);
+    show('empty-state');
+    setAnalyzeStatus('', '');
+    setPipeline(1);
+  }
+
+  setPipeline(1);
+</script>
+</body>
+</html>
