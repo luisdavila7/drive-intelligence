@@ -412,8 +412,8 @@
       <div style="display:flex;flex-direction:column;gap:.75rem">
         <div>
           <label for="api-key">Google Drive API Key</label>
-          <input type="text" id="api-key" placeholder="AIzaSy..." value="AIzaSyA6T8j7XHvpnw-GoBLI6mJ8dLP2hBQxwrE"/>
-          <p class="input-hint">Pre-configured for this PoC. Change if needed.</p>
+          <input type="text" id="api-key" placeholder="AIzaSy..." autocomplete="off"/>
+          <p class="input-hint">Enter your Google Drive API Key. It is saved locally in your browser only.</p>
         </div>
         <div>
           <label for="folder-url">Google Drive Folder URL</label>
@@ -787,6 +787,19 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
   }
 
   setPipeline(1);
+
+  // Restore saved API key from localStorage (never stored in source code)
+  (function restoreApiKey() {
+    const saved = localStorage.getItem('drive_api_key');
+    if (saved) document.getElementById('api-key').value = saved;
+  })();
+
+  // Save API key to localStorage whenever it changes
+  document.getElementById('api-key').addEventListener('change', function () {
+    const val = this.value.trim();
+    if (val) localStorage.setItem('drive_api_key', val);
+    else localStorage.removeItem('drive_api_key');
+  });
 </script>
 </body>
 </html>
