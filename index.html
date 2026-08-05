@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Drive Intelligence — File Analysis with Claude</title>
+  <title>Drive Intelligence — File Analysis with AI</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <style>
     :root {
@@ -383,6 +383,37 @@
       .sidebar { border-right: none; border-bottom: 1px solid var(--gray-200); }
       .stats-row { grid-template-columns: repeat(3, 1fr); }
     }
+
+    /* Key status indicators */
+    .key-status-row { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .key-status {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 500;
+      padding: .3rem .65rem;
+      border-radius: 20px;
+      background: var(--gray-100);
+      color: var(--gray-600);
+      border: 1px solid var(--gray-200);
+      transition: all .2s;
+    }
+    .key-status.ok  { background: var(--green-light); color: var(--green);  border-color: #CEEAD6; }
+    .key-status.bad { background: var(--red-light);   color: var(--red);    border-color: #F5C6C3; }
+    .ks-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .8; flex-shrink: 0; }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: .6rem 1rem;
+      font-size: 11px;
+      color: var(--gray-400);
+      border-top: 1px solid var(--gray-200);
+      background: var(--white);
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: .02em;
+    }
   </style>
 </head>
 <body>
@@ -395,10 +426,10 @@
     </div>
     <div>
       <div class="header-title">Drive Intelligence</div>
-      <div class="header-sub">Google Drive × Claude — File Analysis</div>
+      <div class="header-sub">Google Drive × OpenAI — File Analysis</div>
     </div>
   </div>
-  <span class="header-badge">PoC v1.0</span>
+  <span class="header-badge">v1.1.0</span>
 </header>
 
 <div class="layout">
@@ -411,9 +442,12 @@
       <div class="section-label">Configuration</div>
       <div style="display:flex;flex-direction:column;gap:.75rem">
         <div>
-          <label for="api-key">Google Drive API Key</label>
-          <input type="text" id="api-key" placeholder="AIzaSy..." autocomplete="off"/>
-          <p class="input-hint">Enter your Google Drive API Key. It is saved locally in your browser only.</p>
+          <label>API Keys</label>
+          <div class="key-status-row">
+            <div class="key-status" id="ks-drive"><div class="ks-dot"></div><span id="ks-drive-label">Drive API</span></div>
+            <div class="key-status" id="ks-openai"><div class="ks-dot"></div><span id="ks-openai-label">OpenAI</span></div>
+          </div>
+          <p class="input-hint" style="margin-top:6px">To configure keys open DevTools <strong>F12 → Console</strong> and run:<br><code style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--gray-100);padding:2px 5px;border-radius:4px">setKeys('drive-key','openai-key')</code></p>
         </div>
         <div>
           <label for="folder-url">Google Drive Folder URL</label>
@@ -447,7 +481,7 @@
         </div>
         <div class="pip-item" id="pip-4">
           <div class="pip-indicator"></div>
-          <span class="pip-text">Analyze with Claude</span>
+          <span class="pip-text">Analyze with AI</span>
         </div>
         <div class="pip-item" id="pip-5">
           <div class="pip-indicator"></div>
@@ -469,10 +503,10 @@
 4. Recommended action for each file: Keep, Archive, or Review with owner
 
 Be specific — mention exact file names and explain your reasoning clearly.</textarea>
-      <p class="input-hint" style="margin-top:5px">Edit this prompt to change what Claude looks for.</p>
-      <button class="btn btn-primary" id="analyze-btn" onclick="analyzeWithClaude()" style="margin-top:.75rem" disabled>
+      <p class="input-hint" style="margin-top:5px">Edit this prompt to change what the AI looks for.</p>
+      <button class="btn btn-primary" id="analyze-btn" onclick="analyzeWithAI()" style="margin-top:.75rem" disabled>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        Analyze with Claude
+        Analyze with AI
       </button>
       <div id="analyze-status" style="font-size:11px;color:var(--gray-600);margin-top:5px;min-height:16px;font-family:'JetBrains Mono',monospace"></div>
     </div>
@@ -545,10 +579,10 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     <div id="results-section" class="card hidden">
       <div class="card-title">
         <div class="card-title-dot" style="background:var(--green)"></div>
-        Claude's Analysis
+        AI Analysis
       </div>
       <div class="analysis-box" id="analysis-out">
-        <div class="analysis-empty">Analysis will appear here after you click "Analyze with Claude"</div>
+        <div class="analysis-empty">Analysis will appear here after you click "Analyze with AI"</div>
       </div>
       <div class="actions-row">
         <button class="btn btn-secondary" onclick="downloadJSON('full')">
@@ -561,10 +595,51 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
   </main>
 </div>
 
+<footer class="footer">
+  Drive Intelligence &nbsp;·&nbsp; v1.1.0 &nbsp;·&nbsp; Aramark Enterprise Knowledge Initiative &mdash; PoC
+</footer>
+
 <script>
   let files = [];
   let fullPayload = {};
 
+  // ─── Key management ────────────────────────────────────────────────────────
+  // Keys are NEVER in the source code. Set them once via the browser console:
+  //   setKeys('your-google-drive-api-key', 'your-openai-api-key')
+  // To update a single key:
+  //   setKeys('new-drive-key', '')   ← leave the other blank to keep it
+  // To clear all keys:
+  //   clearKeys()
+  // ───────────────────────────────────────────────────────────────────────────
+  function setKeys(driveKey, openaiKey) {
+    if (driveKey)  localStorage.setItem('drive_api_key',  driveKey);
+    if (openaiKey) localStorage.setItem('openai_api_key', openaiKey);
+    location.reload();
+  }
+  function clearKeys() {
+    localStorage.removeItem('drive_api_key');
+    localStorage.removeItem('openai_api_key');
+    location.reload();
+  }
+
+  function getKeys() {
+    return {
+      drive:  localStorage.getItem('drive_api_key')  || '',
+      openai: localStorage.getItem('openai_api_key') || ''
+    };
+  }
+
+  function updateKeyStatus() {
+    const { drive, openai } = getKeys();
+    const dEl = document.getElementById('ks-drive');
+    const oEl = document.getElementById('ks-openai');
+    if (drive)  { dEl.className = 'key-status ok';  document.getElementById('ks-drive-label').textContent  = 'Drive API ✓'; }
+    else        { dEl.className = 'key-status bad'; document.getElementById('ks-drive-label').textContent  = 'Drive API ✗'; }
+    if (openai) { oEl.className = 'key-status ok';  document.getElementById('ks-openai-label').textContent = 'OpenAI ✓'; }
+    else        { oEl.className = 'key-status bad'; document.getElementById('ks-openai-label').textContent = 'OpenAI ✗'; }
+  }
+
+  // ─── Utilities ─────────────────────────────────────────────────────────────
   function extractFolderID(url) {
     const m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
     return m ? m[1] : null;
@@ -606,11 +681,9 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
   }
 
   function versionSignals(name) {
-    const n = name.toLowerCase();
-    const tags = [];
-    if (/final|approved|v\d+|copy|old|backup|draft|new|revised|updated|temp/.test(n))
-      tags.push('<span class="badge badge-yellow">version</span>');
-    return tags.join(' ') || '—';
+    if (/final|approved|v\d+|copy|old|backup|draft|new|revised|updated|temp/i.test(name))
+      return '<span class="badge badge-yellow">version</span>';
+    return '—';
   }
 
   function isOld(modified) {
@@ -636,11 +709,17 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
   function show(id) { document.getElementById(id).classList.remove('hidden'); }
   function hide(id) { document.getElementById(id).classList.add('hidden'); }
 
+  // ─── Fetch Drive metadata ───────────────────────────────────────────────────
   async function fetchMetadata() {
-    const apiKey = document.getElementById('api-key').value.trim();
+    const { drive } = getKeys();
     const folderUrl = document.getElementById('folder-url').value.trim();
-    if (!apiKey || !folderUrl) {
-      alert('Please enter both the API key and a folder URL.');
+
+    if (!drive) {
+      alert('Google Drive API key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'your-drive-key\', \'your-openai-key\')');
+      return;
+    }
+    if (!folderUrl) {
+      alert('Please paste a Google Drive folder URL.');
       return;
     }
     const folderID = extractFolderID(folderUrl);
@@ -656,7 +735,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     hide('empty-state');
 
     try {
-      const url = `https://www.googleapis.com/drive/v3/files?q='${folderID}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,createdTime,owners)&key=${apiKey}&pageSize=100`;
+      const url = `https://www.googleapis.com/drive/v3/files?q='${folderID}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,createdTime,owners)&key=${drive}&pageSize=100`;
       const res = await fetch(url);
       if (!res.ok) {
         const err = await res.json();
@@ -683,7 +762,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       setPipeline(3);
       document.getElementById('file-count').textContent = files.length + ' files';
     } catch (e) {
-      alert('Error fetching from Google Drive: ' + e.message + '\n\nMake sure:\n1. The folder is shared publicly\n2. The Google Drive API is enabled\n3. The API key is correct');
+      alert('Error fetching from Google Drive: ' + e.message + '\n\nMake sure:\n1. The folder is shared publicly\n2. The Google Drive API is enabled\n3. The API key is correct and restricted to this domain');
       setPipeline(1, 2);
     }
 
@@ -717,7 +796,14 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     document.getElementById('stat-old').textContent = old;
   }
 
-  async function analyzeWithClaude() {
+  // ─── AI Analysis via OpenAI gpt-4o-mini ────────────────────────────────────
+  async function analyzeWithAI() {
+    const { openai } = getKeys();
+    if (!openai) {
+      alert('OpenAI API key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'\', \'your-openai-key\')');
+      return;
+    }
+
     const prompt = document.getElementById('user-prompt').value.trim();
     if (!prompt || !files.length) return;
 
@@ -725,46 +811,57 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     btn.disabled = true;
     btn.textContent = 'Analyzing...';
     setPipeline(4);
-    setAnalyzeStatus('Sending to Claude...', 'var(--blue)');
+    setAnalyzeStatus('Sending to OpenAI...', 'var(--blue)');
 
     const metaText = files.map(f => {
       const type = mimeLabel(f.mimeType);
       const size = sizeLabel(f.size);
       const modified = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('en-US') : 'unknown';
-      const created = f.createdTime ? new Date(f.createdTime).toLocaleDateString('en-US') : 'unknown';
+      const created  = f.createdTime  ? new Date(f.createdTime).toLocaleDateString('en-US')  : 'unknown';
       const old = isOld(f.modifiedTime) ? ' [OLDER THAN 1 YEAR]' : '';
       return `- ${f.name} | type: ${type} | size: ${size} | created: ${created} | modified: ${modified}${old}`;
     }).join('\n');
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openai}`
+        },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1000,
+          model: 'gpt-4o-mini',
+          max_tokens: 1500,
           messages: [{ role: 'user', content: `${prompt}\n\nFile metadata:\n${metaText}` }]
         })
       });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || 'OpenAI API error');
+      }
+
       const data = await res.json();
-      const text = data.content?.find(b => b.type === 'text')?.text || 'No response received.';
+      const text = data.choices?.[0]?.message?.content || 'No response received.';
 
       document.getElementById('analysis-out').textContent = text;
       fullPayload.prompt = prompt;
       fullPayload.analysis = text;
       fullPayload.analyzed_at = new Date().toISOString();
+      fullPayload.model = 'gpt-4o-mini';
 
       setPipeline(5);
       setAnalyzeStatus('✓ Analysis complete', 'var(--green)');
     } catch (e) {
-      setAnalyzeStatus('Error connecting to Claude', 'var(--red)');
+      setAnalyzeStatus('Error: ' + e.message, 'var(--red)');
       setPipeline(3, 4);
     }
 
     btn.disabled = false;
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg> Analyze with Claude';
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg> Analyze with AI';
   }
 
+  // ─── Download ───────────────────────────────────────────────────────────────
   function downloadJSON(type) {
     const data = type === 'meta' ? { fetched_at: fullPayload.fetched_at, files: fullPayload.files } : fullPayload;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -774,11 +871,12 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     a.click();
   }
 
+  // ─── Reset ──────────────────────────────────────────────────────────────────
   function resetAll() {
     files = []; fullPayload = {};
     document.getElementById('folder-url').value = '';
     document.getElementById('meta-body').innerHTML = '';
-    document.getElementById('analysis-out').innerHTML = '<div class="analysis-empty">Analysis will appear here after you click "Analyze with Claude"</div>';
+    document.getElementById('analysis-out').innerHTML = '<div class="analysis-empty">Analysis will appear here after you click "Analyze with AI"</div>';
     document.getElementById('analyze-btn').disabled = true;
     ['stats-section', 'metadata-section', 'results-section'].forEach(hide);
     show('empty-state');
@@ -786,20 +884,9 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     setPipeline(1);
   }
 
+  // ─── Init ───────────────────────────────────────────────────────────────────
   setPipeline(1);
-
-  // Restore saved API key from localStorage (never stored in source code)
-  (function restoreApiKey() {
-    const saved = localStorage.getItem('drive_api_key');
-    if (saved) document.getElementById('api-key').value = saved;
-  })();
-
-  // Save API key to localStorage whenever it changes
-  document.getElementById('api-key').addEventListener('change', function () {
-    const val = this.value.trim();
-    if (val) localStorage.setItem('drive_api_key', val);
-    else localStorage.removeItem('drive_api_key');
-  });
+  updateKeyStatus();
 </script>
 </body>
 </html>
