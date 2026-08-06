@@ -309,10 +309,22 @@
       font-size: 13px;
       line-height: 1.8;
       color: var(--gray-800);
-      white-space: pre-wrap;
       min-height: 120px;
       font-family: 'Inter', sans-serif;
     }
+    .analysis-box strong { font-weight: 600; color: var(--gray-900); }
+    .analysis-box em { font-style: italic; }
+    .analysis-box ul { margin: .3rem 0 .3rem 1.3rem; padding: 0; }
+    .analysis-box li { margin: .2rem 0; }
+    .analysis-box .md-heading {
+      font-weight: 600;
+      color: var(--gray-900);
+      margin: .9rem 0 .25rem;
+      line-height: 1.4;
+    }
+    .analysis-box .md-h2 { font-size: 14px; }
+    .analysis-box .md-h3 { font-size: 13px; }
+    .analysis-box .md-gap { height: .4rem; }
     .analysis-empty {
       color: var(--gray-400);
       font-style: italic;
@@ -509,10 +521,8 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
         Analyze with AI
       </button>
       <div id="analyze-status" style="font-size:11px;color:var(--gray-600);margin-top:5px;min-height:16px;font-family:'JetBrains Mono',monospace"></div>
+      <button class="btn btn-green" onclick="resetAll()" style="margin-top:.6rem;width:100%">↺ Start over</button>
     </div>
-
-    <!-- Reset -->
-    <button class="btn btn-secondary" onclick="resetAll()" style="margin-top:auto">↺ Start over</button>
 
   </aside>
 
@@ -561,6 +571,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
               <th>Type</th>
               <th>Size</th>
               <th>Last modified</th>
+              <th>Author</th>
               <th>Signals</th>
             </tr>
           </thead>
@@ -777,12 +788,14 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       const type = mimeLabel(f.mimeType);
       const old = isOld(f.modifiedTime);
       const modified = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+      const author = f.owners?.[0]?.displayName || '—';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="td-name" title="${f.name}">${f.name}</td>
         <td><span class="badge ${badgeColor(type)}">${type}</span></td>
         <td style="color:var(--gray-600);font-family:'JetBrains Mono',monospace;font-size:11px">${sizeLabel(f.size)}</td>
         <td style="color:${old ? 'var(--red)' : 'var(--gray-800)'};font-size:12px">${modified}</td>
+        <td style="font-size:12px;color:var(--gray-600);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${author}">${author}</td>
         <td>${versionSignals(f.name)}${old ? ' <span class="badge badge-red">+1yr</span>' : ''}</td>`;
       tbody.appendChild(tr);
     });
@@ -818,8 +831,9 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       const size = sizeLabel(f.size);
       const modified = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('en-US') : 'unknown';
       const created  = f.createdTime  ? new Date(f.createdTime).toLocaleDateString('en-US')  : 'unknown';
+      const author   = f.owners?.[0]?.displayName || 'unknown';
       const old = isOld(f.modifiedTime) ? ' [OLDER THAN 1 YEAR]' : '';
-      return `- ${f.name} | type: ${type} | size: ${size} | created: ${created} | modified: ${modified}${old}`;
+      return `- ${f.name} | type: ${type} | size: ${size} | author: ${author} | created: ${created} | modified: ${modified}${old}`;
     }).join('\n');
 
     try {
@@ -844,7 +858,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       const data = await res.json();
       const text = data.choices?.[0]?.message?.content || 'No response received.';
 
-      document.getElementById('analysis-out').textContent = text;
+      document.getElementById('analysis-out').innerHTML = renderMarkdown(text);
       fullPayload.prompt = prompt;
       fullPayload.analysis = text;
       fullPayload.analyzed_at = new Date().toISOString();
@@ -859,6 +873,52 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
 
     btn.disabled = false;
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg> Analyze with AI';
+  }
+
+  // ─── Markdown renderer ─────────────────────────────────────────────────────
+  // Converts the ## headings, **bold**, *italic*, and bullet lists that
+  // OpenAI returns into proper HTML so the analysis looks clean.
+  function renderMarkdown(md) {
+    const lines = md.split('\n');
+    let html = '';
+    let inUl = false;
+
+    for (let raw of lines) {
+      // Escape HTML to prevent injection
+      let line = raw
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      // Inline formatting (order matters: *** before ** before *)
+      line = line
+        .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+        .replace(/\*\*(.+?)\*\*/g,     '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g,         '<em>$1</em>');
+
+      const h2 = line.match(/^## (.+)$/);
+      const h3 = line.match(/^### (.+)$/);
+      const li = line.match(/^(?:[-*]|\d+\.) (.+)$/);
+
+      if (h3) {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        html += `<div class="md-heading md-h3">${h3[1]}</div>`;
+      } else if (h2) {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        html += `<div class="md-heading md-h2">${h2[1]}</div>`;
+      } else if (li) {
+        if (!inUl) { html += '<ul>'; inUl = true; }
+        html += `<li>${li[1]}</li>`;
+      } else if (line.trim() === '') {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        html += '<div class="md-gap"></div>';
+      } else {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        html += `<div>${line}</div>`;
+      }
+    }
+    if (inUl) html += '</ul>';
+    return html;
   }
 
   // ─── Download ───────────────────────────────────────────────────────────────
