@@ -441,7 +441,7 @@
       <div class="header-sub">Google Drive × OpenAI — File Analysis</div>
     </div>
   </div>
-  <span class="header-badge">v1.1.1</span>
+  <span class="header-badge">v1.2.0</span>
 </header>
 
 <div class="layout">
@@ -568,6 +568,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
           <thead>
             <tr>
               <th>Name</th>
+              <th>Folder</th>
               <th>Type</th>
               <th>Size</th>
               <th>Last modified</th>
@@ -607,7 +608,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.1.1 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.2.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -720,7 +721,32 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
   function show(id) { document.getElementById(id).classList.remove('hidden'); }
   function hide(id) { document.getElementById(id).classList.add('hidden'); }
 
-  // ─── Fetch Drive metadata ───────────────────────────────────────────────────
+  // ─── Fetch Drive metadata (recursive) ─────────────────────────────────────
+  // Recursively walks all subfolders and tags each file with its full path.
+  async function fetchFolderContents(folderId, driveKey, path) {
+    const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,createdTime,owners)&key=${driveKey}&pageSize=1000`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Drive API error');
+    }
+    const { files: items = [] } = await res.json();
+
+    const subFolders = items.filter(f => f.mimeType === 'application/vnd.google-apps.folder');
+    const localFiles = items
+      .filter(f => f.mimeType !== 'application/vnd.google-apps.folder')
+      .map(f => ({ ...f, folderPath: path || '(root)' }));
+
+    // Recurse into all subfolders in parallel
+    const nested = await Promise.all(
+      subFolders.map(folder =>
+        fetchFolderContents(folder.id, driveKey, path ? `${path}/${folder.name}` : folder.name)
+      )
+    );
+
+    return [...localFiles, ...nested.flat()];
+  }
+
   async function fetchMetadata() {
     const { drive } = getKeys();
     const folderUrl = document.getElementById('folder-url').value.trim();
@@ -741,22 +767,15 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
 
     const btn = document.getElementById('fetch-btn');
     btn.disabled = true;
-    btn.textContent = 'Fetching...';
+    btn.textContent = 'Scanning folders...';
     setPipeline(2);
     hide('empty-state');
 
     try {
-      const url = `https://www.googleapis.com/drive/v3/files?q='${folderID}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,createdTime,owners)&key=${drive}&pageSize=100`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || 'API error');
-      }
-      const data = await res.json();
-      files = (data.files || []).filter(f => f.mimeType !== 'application/vnd.google-apps.folder');
+      files = await fetchFolderContents(folderID, drive, '');
 
       if (!files.length) {
-        alert('No files found in this folder. Make sure the folder is shared publicly.');
+        alert('No files found in this folder (or its subfolders). Make sure the folder is shared publicly.');
         setPipeline(1);
         btn.disabled = false;
         btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Fetch files from Drive';
@@ -790,8 +809,10 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       const modified = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
       const author = f.owners?.[0]?.displayName || '—';
       const tr = document.createElement('tr');
+      const folder = f.folderPath || '(root)';
       tr.innerHTML = `
         <td class="td-name" title="${f.name}">${f.name}</td>
+        <td style="font-size:11px;color:var(--blue);font-family:'JetBrains Mono',monospace;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${folder}">${folder}</td>
         <td><span class="badge ${badgeColor(type)}">${type}</span></td>
         <td style="color:var(--gray-600);font-family:'JetBrains Mono',monospace;font-size:11px">${sizeLabel(f.size)}</td>
         <td style="color:${old ? 'var(--red)' : 'var(--gray-800)'};font-size:12px">${modified}</td>
@@ -832,8 +853,9 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       const modified = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('en-US') : 'unknown';
       const created  = f.createdTime  ? new Date(f.createdTime).toLocaleDateString('en-US')  : 'unknown';
       const author   = f.owners?.[0]?.displayName || 'unknown';
+      const folder   = f.folderPath || '(root)';
       const old = isOld(f.modifiedTime) ? ' [OLDER THAN 1 YEAR]' : '';
-      return `- ${f.name} | type: ${type} | size: ${size} | author: ${author} | created: ${created} | modified: ${modified}${old}`;
+      return `- ${f.name} | folder: ${folder} | type: ${type} | size: ${size} | author: ${author} | created: ${created} | modified: ${modified}${old}`;
     }).join('\n');
 
     try {
