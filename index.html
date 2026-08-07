@@ -44,10 +44,11 @@
       background: var(--white);
       border-bottom: 1px solid var(--gray-200);
       padding: 0 2rem;
-      height: 56px;
+      min-height: 56px;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 1rem;
       position: sticky;
       top: 0;
       z-index: 100;
@@ -67,8 +68,8 @@
       justify-content: center;
     }
     .header-icon svg { width: 18px; height: 18px; fill: white; }
-    .header-title { font-size: 16px; font-weight: 600; color: var(--gray-900); }
-    .header-sub { font-size: 12px; color: var(--gray-600); margin-top: 1px; }
+    .header-title { font-size: 16px; font-weight: 600; color: var(--gray-900); white-space: nowrap; }
+    .header-sub { font-size: 12px; color: var(--gray-600); margin-top: 1px; white-space: nowrap; }
     .header-badge {
       font-size: 11px;
       background: var(--blue-light);
@@ -507,8 +508,8 @@
       <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
     </div>
     <div>
-      <div class="header-title">Drive Intelligence - Enterprise Knowledge Initiative — PoC</div>
-      <div class="header-sub">Drive &amp; SharePoint × OpenAI — File Analysis</div>
+      <div class="header-title">Drive Intelligence</div>
+      <div class="header-sub">Enterprise Knowledge Initiative &mdash; Drive &amp; SharePoint &times; OpenAI &middot; PoC</div>
     </div>
   </div>
   <span class="header-badge">v1.5.0</span>
