@@ -20,7 +20,7 @@ A web app called **Drive Intelligence** that:
 | Layer | Platform | URL |
 |---|---|---|
 | Frontend (HTML) | GitHub Pages | https://luisdavila7.github.io/drive-intelligence/ |
-| API Proxy | Vercel (serverless) | https://drive-intelligence-[hash].vercel.app ← set when deployed |
+| API Proxy | Vercel (serverless) | https://drive-intelligence-steel.vercel.app |
 | Source code | GitHub | `luisdavila7/drive-intelligence` |
 
 The app is a **single file** (`index.html`) with no framework and no build step.
