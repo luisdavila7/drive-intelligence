@@ -134,8 +134,8 @@ Every usage, duplicate found, and recommendation made should eventually be logge
 ### Environment variables required in Vercel dashboard:
 | Variable | Value |
 |---|---|
-| `OPENAI_API_KEY` | sk-... (your OpenAI key) |
-| `DRIVE_API_KEY` | AIza... (your Google Drive API key) |
+| `OpenAIKey` | sk-... (your OpenAI key) |
+| `DriveAPIKey` | AIza... (your Google Drive API key) |
 
 ### API routes (serverless functions in `/api/`):
 - `GET /api/drive?folderId=XXX` — proxies Google Drive API v3 folder listing

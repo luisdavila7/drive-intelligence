@@ -12,9 +12,9 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const apiKey = process.env.DRIVE_API_KEY;
+  const apiKey = process.env.DriveAPIKey;
   if (!apiKey) {
-    return res.status(500).json({ error: 'DRIVE_API_KEY is not set in Vercel environment variables.' });
+    return res.status(500).json({ error: 'DriveAPIKey is not set in Vercel environment variables.' });
   }
 
   const { folderId } = req.query;
