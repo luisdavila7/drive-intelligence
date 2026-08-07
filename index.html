@@ -511,7 +511,7 @@
       <div class="header-sub">Drive &amp; SharePoint × OpenAI — File Analysis</div>
     </div>
   </div>
-  <span class="header-badge">v1.4.0</span>
+  <span class="header-badge">v1.5.0</span>
 </header>
 
 <div class="layout">
@@ -537,7 +537,7 @@
             <div class="key-status" id="ks-drive"><div class="ks-dot"></div><span id="ks-drive-label">Drive API</span></div>
             <div class="key-status" id="ks-openai"><div class="ks-dot"></div><span id="ks-openai-label">OpenAI</span></div>
           </div>
-          <p class="input-hint" style="margin-top:6px">To configure keys open DevTools <strong>F12 → Console</strong> and run:<br><code style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--gray-100);padding:2px 5px;border-radius:4px">setKeys('drive-key','openai-key')</code></p>
+          <p class="input-hint" style="margin-top:6px" id="key-hint-drive">To configure keys open DevTools <strong>F12 → Console</strong> and run:<br><code style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--gray-100);padding:2px 5px;border-radius:4px">setKeys('drive-key','openai-key')</code></p>
         </div>
         <div>
           <label for="folder-url">Google Drive Folder URL</label>
@@ -557,7 +557,7 @@
           <div class="key-status-row">
             <div class="key-status" id="ks-openai-sp"><div class="ks-dot"></div><span id="ks-openai-sp-label">OpenAI</span></div>
           </div>
-          <p class="input-hint" style="margin-top:6px">Run in DevTools Console:<br><code style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--gray-100);padding:2px 5px;border-radius:4px">setKeys('','openai-key')</code></p>
+          <p class="input-hint" style="margin-top:6px" id="key-hint-sp">Run in DevTools Console:<br><code style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--gray-100);padding:2px 5px;border-radius:4px">setKeys('','openai-key')</code></p>
         </div>
         <div>
           <label>SharePoint Export File</label>
@@ -714,12 +714,18 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.4.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.5.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
   let files = [];
   let fullPayload = {};
+
+  // ─── Environment detection ──────────────────────────────────────────────────
+  // When deployed on Vercel, /api/drive and /api/analyze are available as
+  // serverless proxy routes — API keys live server-side and never reach the browser.
+  // On GitHub Pages there is no backend, so the app falls back to localStorage keys.
+  const HAS_PROXY = !window.location.hostname.includes('github.io');
 
   // ─── Key management ────────────────────────────────────────────────────────
   // Keys are NEVER in the source code. Set them once via the browser console:
@@ -748,6 +754,21 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
   }
 
   function updateKeyStatus() {
+    if (HAS_PROXY) {
+      // Running on Vercel — keys are server-side, show a single "connected" badge
+      // and replace the setup instructions with a friendly confirmation.
+      const proxyBadge = '<div class="ks-dot"></div><span>🔒 Secure proxy</span>';
+      ['ks-drive', 'ks-openai', 'ks-openai-sp'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.className = 'key-status ok'; el.innerHTML = proxyBadge; }
+      });
+      const driveHint = document.getElementById('key-hint-drive');
+      if (driveHint) driveHint.innerHTML = '🔒 Connected via secure proxy &mdash; no configuration needed.';
+      const spHint = document.getElementById('key-hint-sp');
+      if (spHint) spHint.innerHTML = '🔒 Connected via secure proxy &mdash; no configuration needed.';
+      return;
+    }
+    // GitHub Pages fallback — check localStorage keys
     const { drive, openai } = getKeys();
     const dEl = document.getElementById('ks-drive');
     const oEl = document.getElementById('ks-openai');
@@ -755,7 +776,6 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     else        { dEl.className = 'key-status bad'; document.getElementById('ks-drive-label').textContent  = 'Drive API ✗'; }
     if (openai) { oEl.className = 'key-status ok';  document.getElementById('ks-openai-label').textContent = 'OpenAI ✓'; }
     else        { oEl.className = 'key-status bad'; document.getElementById('ks-openai-label').textContent = 'OpenAI ✗'; }
-    // Also update SharePoint key indicator if visible
     const spEl = document.getElementById('ks-openai-sp');
     if (spEl) {
       if (openai) { spEl.className = 'key-status ok';  document.getElementById('ks-openai-sp-label').textContent = 'OpenAI ✓'; }
@@ -807,7 +827,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
   // ─── SharePoint: parse Excel and load into the shared pipeline ─────────────
   function processSharePointFile(file) {
     const { openai } = getKeys();
-    if (!openai) {
+    if (!HAS_PROXY && !openai) {
       alert('OpenAI API key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'\', \'your-openai-key\')');
       return;
     }
@@ -973,9 +993,18 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
 
   // ─── Fetch Drive metadata (recursive) ─────────────────────────────────────
   // Recursively walks all subfolders and tags each file with its full path.
-  async function fetchFolderContents(folderId, driveKey, path) {
-    const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,createdTime,owners)&key=${driveKey}&pageSize=1000`;
-    const res = await fetch(url);
+  // On Vercel: calls /api/drive (proxy, key is server-side).
+  // On GitHub Pages: calls Google Drive API directly with the localStorage key.
+  async function fetchFolderContents(folderId, path) {
+    let fetchUrl;
+    if (HAS_PROXY) {
+      fetchUrl = `/api/drive?folderId=${encodeURIComponent(folderId)}`;
+    } else {
+      const { drive } = getKeys();
+      fetchUrl = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,createdTime,owners)&key=${drive}&pageSize=1000`;
+    }
+
+    const res = await fetch(fetchUrl);
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error?.message || 'Drive API error');
@@ -990,7 +1019,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     // Recurse into all subfolders in parallel
     const nested = await Promise.all(
       subFolders.map(folder =>
-        fetchFolderContents(folder.id, driveKey, path ? `${path}/${folder.name}` : folder.name)
+        fetchFolderContents(folder.id, path ? `${path}/${folder.name}` : folder.name)
       )
     );
 
@@ -1001,7 +1030,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     const { drive } = getKeys();
     const folderUrl = document.getElementById('folder-url').value.trim();
 
-    if (!drive) {
+    if (!HAS_PROXY && !drive) {
       alert('Google Drive API key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'your-drive-key\', \'your-openai-key\')');
       return;
     }
@@ -1022,7 +1051,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     hide('empty-state');
 
     try {
-      files = await fetchFolderContents(folderID, drive, '');
+      files = await fetchFolderContents(folderID, '');
 
       if (!files.length) {
         alert('No files found in this folder (or its subfolders). Make sure the folder is shared publicly.');
@@ -1119,7 +1148,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
   // ─── AI Analysis via OpenAI gpt-4o-mini ────────────────────────────────────
   async function analyzeWithAI() {
     const { openai } = getKeys();
-    if (!openai) {
+    if (!HAS_PROXY && !openai) {
       alert('OpenAI API key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'\', \'your-openai-key\')');
       return;
     }
@@ -1156,12 +1185,16 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       : '';
 
     try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      // On Vercel: call the secure proxy (key is server-side, never in the browser).
+      // On GitHub Pages: call OpenAI directly with the localStorage key.
+      const aiUrl     = HAS_PROXY ? '/api/analyze' : 'https://api.openai.com/v1/chat/completions';
+      const aiHeaders = HAS_PROXY
+        ? { 'Content-Type': 'application/json' }
+        : { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openai}` };
+
+      const res = await fetch(aiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openai}`
-        },
+        headers: aiHeaders,
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           max_tokens: 1500,
