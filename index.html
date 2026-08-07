@@ -391,6 +391,22 @@
     .empty-state h3 { font-size: 15px; font-weight: 500; color: var(--gray-800); margin-bottom: .4rem; }
     .empty-state p { font-size: 13px; line-height: 1.6; }
 
+    /* AI token-limit warning banner */
+    .limit-warning {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: .75rem 1rem;
+      border-radius: var(--radius);
+      font-size: 12px;
+      line-height: 1.55;
+      border: 1px solid;
+    }
+    .limit-warning.warn  { background: var(--yellow-light); border-color: #F9E08A; color: #7B5800; }
+    .limit-warning.error { background: var(--red-light);   border-color: #F5C6C3; color: #7B2020; }
+    .limit-warning-icon  { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .limit-warning strong { font-weight: 600; display: block; margin-bottom: 3px; }
+
     @media (max-width: 768px) {
       .layout { grid-template-columns: 1fr; }
       .sidebar { border-right: none; border-bottom: 1px solid var(--gray-200); }
@@ -495,7 +511,7 @@
       <div class="header-sub">Drive &amp; SharePoint × OpenAI — File Analysis</div>
     </div>
   </div>
-  <span class="header-badge">v1.3.0</span>
+  <span class="header-badge">v1.4.0</span>
 </header>
 
 <div class="layout">
@@ -625,6 +641,9 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       </div>
     </div>
 
+    <!-- AI limit warning (shown when file count exceeds thresholds) -->
+    <div id="limit-warning" class="hidden"></div>
+
     <!-- Stats -->
     <div id="stats-section" class="hidden">
       <div class="stats-row">
@@ -695,7 +714,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.3.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.4.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -863,6 +882,8 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
         fullPayload = { source: 'sharepoint', file_name: file.name, fetched_at: new Date().toISOString(), files };
         renderTable(files);
         updateStats(files);
+        showLimitWarning(files.length);
+        show('limit-warning');
         show('stats-section');
         show('metadata-section');
         show('results-section');
@@ -1014,6 +1035,8 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       fullPayload = { folder_url: folderUrl, fetched_at: new Date().toISOString(), files };
       renderTable(files);
       updateStats(files);
+      showLimitWarning(files.length);
+      show('limit-warning');
       show('stats-section');
       show('metadata-section');
       show('results-section');
@@ -1059,6 +1082,40 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     document.getElementById('stat-old').textContent = old;
   }
 
+  // ─── AI token-limit warning ─────────────────────────────────────────────────
+  // gpt-4o-mini has a 128k token context window.
+  // Each file row in the payload is ~40-60 tokens, so:
+  //   • 500+ files  → AI may give generic answers instead of per-file detail
+  //   • 1200+ files → risk of exceeding the token limit; payload is auto-capped
+  const AI_WARN_THRESHOLD = 500;    // yellow notice: quality may degrade
+  const AI_HARD_LIMIT     = 1200;   // hard cap: only first N files are sent
+
+  function showLimitWarning(count) {
+    const el = document.getElementById('limit-warning');
+    if (count > AI_HARD_LIMIT) {
+      el.className = 'limit-warning error';
+      el.innerHTML =
+        `<div class="limit-warning-icon">🚫</div>` +
+        `<div><strong>Token limit — only first ${AI_HARD_LIMIT.toLocaleString()} of ${count.toLocaleString()} files will be analyzed</strong>` +
+        `The AI model (gpt-4o-mini) has a 128k-token context window. Sending all ${count.toLocaleString()} files ` +
+        `at once would exceed that limit and cause an API error. The analysis will cover the first ` +
+        `${AI_HARD_LIMIT.toLocaleString()} files only. For complete coverage, use the folder URL to ` +
+        `target a specific subfolder, or export a filtered SharePoint list.</div>`;
+    } else if (count > AI_WARN_THRESHOLD) {
+      el.className = 'limit-warning warn';
+      el.innerHTML =
+        `<div class="limit-warning-icon">⚠️</div>` +
+        `<div><strong>Large file list — AI analysis quality may be reduced</strong>` +
+        `With ${count.toLocaleString()} files the AI can process the request, but may give ` +
+        `high-level summaries instead of specific per-file recommendations. ` +
+        `For the most accurate results, aim for under ${AI_WARN_THRESHOLD} files — ` +
+        `either by pointing to a subfolder or exporting a filtered SharePoint list.</div>`;
+    } else {
+      el.className = 'hidden';
+      el.innerHTML = '';
+    }
+  }
+
   // ─── AI Analysis via OpenAI gpt-4o-mini ────────────────────────────────────
   async function analyzeWithAI() {
     const { openai } = getKeys();
@@ -1076,7 +1133,13 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     setPipeline(4);
     setAnalyzeStatus('Sending to OpenAI...', 'var(--blue)');
 
-    const metaText = files.map(f => {
+    // Cap the file list to avoid exceeding the model's token limit.
+    // gpt-4o-mini: 128k tokens. Each file row ≈ 40-60 tokens, so ~1200 files
+    // is the safe ceiling before the request risks a 400 context-length error.
+    const truncated      = files.length > AI_HARD_LIMIT;
+    const filesToAnalyze = truncated ? files.slice(0, AI_HARD_LIMIT) : files;
+
+    const metaText = filesToAnalyze.map(f => {
       const type = mimeLabel(f.mimeType);
       const size = sizeLabel(f.size);
       const modified = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('en-US') : 'unknown';
@@ -1086,6 +1149,11 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       const old = isOld(f.modifiedTime) ? ' [OLDER THAN 1 YEAR]' : '';
       return `- ${f.name} | folder: ${folder} | type: ${type} | size: ${size} | author: ${author} | created: ${created} | modified: ${modified}${old}`;
     }).join('\n');
+
+    // If truncated, let the AI know so it doesn't assume this is the full library
+    const truncationNote = truncated
+      ? `\n\n⚠ Note: Due to the AI token limit, only the first ${AI_HARD_LIMIT} of ${files.length.toLocaleString()} total files are included below. Keep this in mind when summarising coverage.`
+      : '';
 
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1097,7 +1165,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           max_tokens: 1500,
-          messages: [{ role: 'user', content: `${prompt}\n\nFile metadata:\n${metaText}` }]
+          messages: [{ role: 'user', content: `${prompt}${truncationNote}\n\nFile metadata:\n${metaText}` }]
         })
       });
 
@@ -1191,6 +1259,8 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     if (spInput) spInput.value = '';
     const upStatus = document.getElementById('upload-status');
     if (upStatus) { upStatus.textContent = ''; upStatus.className = 'hidden'; }
+    const limitWarn = document.getElementById('limit-warning');
+    if (limitWarn) { limitWarn.className = 'hidden'; limitWarn.innerHTML = ''; }
     document.getElementById('meta-body').innerHTML = '';
     document.getElementById('analysis-out').innerHTML = '<div class="analysis-empty">Analysis will appear here after you click "Analyze with AI"</div>';
     document.getElementById('analyze-btn').disabled = true;
