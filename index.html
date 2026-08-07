@@ -758,10 +758,10 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     if (HAS_PROXY) {
       // Running on Vercel — keys are server-side, show a single "connected" badge
       // and replace the setup instructions with a friendly confirmation.
-      const proxyBadge = '<div class="ks-dot"></div><span>🔒 Secure proxy</span>';
-      ['ks-drive', 'ks-openai', 'ks-openai-sp'].forEach(id => {
+      const labels = { 'ks-drive': '🔒 Drive API', 'ks-openai': '🔒 OpenAI', 'ks-openai-sp': '🔒 OpenAI' };
+      Object.entries(labels).forEach(([id, label]) => {
         const el = document.getElementById(id);
-        if (el) { el.className = 'key-status ok'; el.innerHTML = proxyBadge; }
+        if (el) { el.className = 'key-status ok'; el.innerHTML = `<span>${label}</span>`; }
       });
       const driveHint = document.getElementById('key-hint-drive');
       if (driveHint) driveHint.innerHTML = '🔒 Connected via secure proxy &mdash; no configuration needed.';
