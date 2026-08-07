@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Drive Intelligence — File Analysis with AI</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     :root {
       --blue: #1967D2;
@@ -415,6 +416,59 @@
     .key-status.bad { background: var(--red-light);   color: var(--red);    border-color: #F5C6C3; }
     .ks-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .8; flex-shrink: 0; }
 
+    /* Source toggle */
+    .src-toggle {
+      display: flex;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: .875rem;
+    }
+    .src-btn {
+      flex: 1;
+      padding: .45rem .5rem;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: 'Inter', sans-serif;
+      border: none;
+      background: var(--white);
+      color: var(--gray-600);
+      cursor: pointer;
+      transition: all .15s;
+      text-align: center;
+    }
+    .src-btn.active { background: var(--blue); color: white; }
+    .src-btn:not(.active):hover { background: var(--gray-50); }
+
+    /* File upload zone */
+    .upload-zone {
+      border: 2px dashed var(--gray-200);
+      border-radius: var(--radius);
+      padding: 1.4rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+      color: var(--gray-600);
+      font-size: 13px;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--blue-mid);
+      background: var(--blue-light);
+      color: var(--blue);
+    }
+    .upload-zone input[type=file] { display: none; }
+    .upload-zone-icon { font-size: 26px; margin-bottom: .4rem; }
+    .upload-zone-hint { font-size: 11px; color: var(--gray-400); margin-top: .25rem; }
+    .upload-status {
+      font-size: 11px;
+      margin-top: .5rem;
+      padding: .35rem .65rem;
+      border-radius: var(--radius);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .upload-status.ok  { background: var(--green-light); color: var(--green); }
+    .upload-status.err { background: var(--red-light);   color: var(--red);   }
+
     /* Footer */
     .footer {
       text-align: center;
@@ -438,10 +492,10 @@
     </div>
     <div>
       <div class="header-title">Drive Intelligence</div>
-      <div class="header-sub">Google Drive × OpenAI — File Analysis</div>
+      <div class="header-sub">Drive &amp; SharePoint × OpenAI — File Analysis</div>
     </div>
   </div>
-  <span class="header-badge">v1.2.0</span>
+  <span class="header-badge">v1.3.0</span>
 </header>
 
 <div class="layout">
@@ -452,7 +506,15 @@
     <!-- Configuration -->
     <div>
       <div class="section-label">Configuration</div>
-      <div style="display:flex;flex-direction:column;gap:.75rem">
+
+      <!-- Source toggle -->
+      <div class="src-toggle">
+        <button class="src-btn active" id="src-drive-btn" onclick="switchSource('drive')">📁 Google Drive</button>
+        <button class="src-btn" id="src-sharepoint-btn" onclick="switchSource('sharepoint')">📊 SharePoint</button>
+      </div>
+
+      <!-- Google Drive section -->
+      <div id="drive-section" style="display:flex;flex-direction:column;gap:.75rem">
         <div>
           <label>API Keys</label>
           <div class="key-status-row">
@@ -470,6 +532,31 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           Fetch files from Drive
         </button>
+      </div>
+
+      <!-- SharePoint section -->
+      <div id="sharepoint-section" style="display:none;flex-direction:column;gap:.75rem">
+        <div>
+          <label>OpenAI API Key</label>
+          <div class="key-status-row">
+            <div class="key-status" id="ks-openai-sp"><div class="ks-dot"></div><span id="ks-openai-sp-label">OpenAI</span></div>
+          </div>
+          <p class="input-hint" style="margin-top:6px">Run in DevTools Console:<br><code style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--gray-100);padding:2px 5px;border-radius:4px">setKeys('','openai-key')</code></p>
+        </div>
+        <div>
+          <label>SharePoint Export File</label>
+          <div class="upload-zone" id="upload-zone"
+               onclick="document.getElementById('sp-file-input').click()"
+               ondragover="handleDragOver(event)"
+               ondragleave="handleDragLeave(event)"
+               ondrop="handleDrop(event)">
+            <div class="upload-zone-icon">📊</div>
+            <div>Click to upload or drag &amp; drop</div>
+            <div class="upload-zone-hint">.xlsx or .xls exported from SharePoint</div>
+            <input type="file" id="sp-file-input" accept=".xlsx,.xls" onchange="handleFileSelect(event)"/>
+          </div>
+          <div id="upload-status" class="hidden"></div>
+        </div>
       </div>
     </div>
 
@@ -608,7 +695,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.2.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.3.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -649,6 +736,148 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     else        { dEl.className = 'key-status bad'; document.getElementById('ks-drive-label').textContent  = 'Drive API ✗'; }
     if (openai) { oEl.className = 'key-status ok';  document.getElementById('ks-openai-label').textContent = 'OpenAI ✓'; }
     else        { oEl.className = 'key-status bad'; document.getElementById('ks-openai-label').textContent = 'OpenAI ✗'; }
+    // Also update SharePoint key indicator if visible
+    const spEl = document.getElementById('ks-openai-sp');
+    if (spEl) {
+      if (openai) { spEl.className = 'key-status ok';  document.getElementById('ks-openai-sp-label').textContent = 'OpenAI ✓'; }
+      else        { spEl.className = 'key-status bad'; document.getElementById('ks-openai-sp-label').textContent = 'OpenAI ✗'; }
+    }
+  }
+
+  // ─── Source toggle ──────────────────────────────────────────────────────────
+  let activeSource = 'drive';
+
+  function switchSource(src) {
+    activeSource = src;
+    document.getElementById('src-drive-btn').className      = 'src-btn' + (src === 'drive'       ? ' active' : '');
+    document.getElementById('src-sharepoint-btn').className = 'src-btn' + (src === 'sharepoint'  ? ' active' : '');
+    document.getElementById('drive-section').style.display       = src === 'drive'      ? 'flex' : 'none';
+    document.getElementById('sharepoint-section').style.display  = src === 'sharepoint' ? 'flex' : 'none';
+    // Update pipeline step labels to match the active source
+    document.querySelector('#pip-1 .pip-text').textContent = src === 'drive' ? 'Enter folder URL'         : 'Upload SharePoint export';
+    document.querySelector('#pip-2 .pip-text').textContent = src === 'drive' ? 'Fetch metadata from Drive' : 'Parse Excel file';
+    updateKeyStatus();
+    resetAll();
+  }
+
+  // ─── SharePoint: drag & drop + file input ──────────────────────────────────
+  function handleDragOver(e) {
+    e.preventDefault();
+    document.getElementById('upload-zone').classList.add('drag-over');
+  }
+  function handleDragLeave() {
+    document.getElementById('upload-zone').classList.remove('drag-over');
+  }
+  function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('upload-zone').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) processSharePointFile(file);
+  }
+  function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (file) processSharePointFile(file);
+  }
+
+  function setUploadStatus(msg, type) {
+    const el = document.getElementById('upload-status');
+    el.textContent = msg;
+    el.className = 'upload-status' + (type ? ' ' + type : '');
+  }
+
+  // ─── SharePoint: parse Excel and load into the shared pipeline ─────────────
+  function processSharePointFile(file) {
+    const { openai } = getKeys();
+    if (!openai) {
+      alert('OpenAI API key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'\', \'your-openai-key\')');
+      return;
+    }
+
+    setUploadStatus('Reading file…', '');
+    setPipeline(2);
+    hide('empty-state');
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data    = new Uint8Array(e.target.result);
+        const wb      = XLSX.read(data, { type: 'array', cellDates: true });
+        const sheet   = wb.Sheets[wb.SheetNames[0]];
+        const rows    = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+        if (!rows.length) throw new Error('The file appears to be empty.');
+
+        // Extension → MIME map
+        const mimeMap = {
+          xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          xls:  'application/vnd.ms-excel',
+          docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          doc:  'application/msword',
+          pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          ppt:  'application/vnd.ms-powerpoint',
+          pdf:  'application/pdf',
+          txt:  'text/plain',
+          csv:  'text/csv',
+          png:  'image/png',
+          jpg:  'image/jpeg',
+        };
+
+        const parsed = rows
+          .filter(r => {
+            const t = (r['Item Type'] || r['Type'] || '').toString().trim().toLowerCase();
+            return t === 'item'; // skip Folder rows
+          })
+          .map(r => {
+            const name       = (r['Name']        || '').toString().trim();
+            const path       = (r['Path']        || '').toString().trim();
+            const modifiedBy = (r['Modified By'] || '').toString().trim();
+
+            // Parse date: SheetJS returns a JS Date when cellDates:true, fallback to string parse
+            let modifiedTime = null;
+            const modRaw = r['Modified'];
+            if (modRaw instanceof Date) {
+              modifiedTime = modRaw.toISOString();
+            } else if (modRaw) {
+              // Handle DD/MM/YYYY H:MM string format
+              const m = modRaw.toString().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+              if (m) modifiedTime = new Date(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}T${m[4].padStart(2,'0')}:${m[5]}:00`).toISOString();
+            }
+
+            const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+
+            return {
+              name,
+              folderPath:  path || '(root)',
+              mimeType:    mimeMap[ext] || 'application/octet-stream',
+              size:        null,          // not exported by SharePoint by default
+              modifiedTime,
+              createdTime: null,
+              owners:      [{ displayName: modifiedBy }],
+              source:      'sharepoint'
+            };
+          });
+
+        if (!parsed.length) throw new Error('No file items found — the export may only contain Folder rows.');
+
+        files = parsed;
+        fullPayload = { source: 'sharepoint', file_name: file.name, fetched_at: new Date().toISOString(), files };
+        renderTable(files);
+        updateStats(files);
+        show('stats-section');
+        show('metadata-section');
+        show('results-section');
+        document.getElementById('analyze-btn').disabled = false;
+        setPipeline(3);
+        document.getElementById('file-count').textContent = files.length + ' files';
+        setUploadStatus('✓ ' + files.length + ' files loaded from ' + file.name, 'ok');
+
+      } catch (err) {
+        setUploadStatus('Error: ' + err.message, 'err');
+        setPipeline(1, 2);
+      }
+    };
+    reader.onerror = () => setUploadStatus('Could not read the file.', 'err');
+    reader.readAsArrayBuffer(file);
   }
 
   // ─── Utilities ─────────────────────────────────────────────────────────────
@@ -956,7 +1185,12 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
   // ─── Reset ──────────────────────────────────────────────────────────────────
   function resetAll() {
     files = []; fullPayload = {};
-    document.getElementById('folder-url').value = '';
+    const folderUrl = document.getElementById('folder-url');
+    if (folderUrl) folderUrl.value = '';
+    const spInput = document.getElementById('sp-file-input');
+    if (spInput) spInput.value = '';
+    const upStatus = document.getElementById('upload-status');
+    if (upStatus) { upStatus.textContent = ''; upStatus.className = 'hidden'; }
     document.getElementById('meta-body').innerHTML = '';
     document.getElementById('analysis-out').innerHTML = '<div class="analysis-empty">Analysis will appear here after you click "Analyze with AI"</div>';
     document.getElementById('analyze-btn').disabled = true;
