@@ -272,12 +272,25 @@
       text-transform: uppercase; letter-spacing: .05em; margin-bottom: .5rem;
     }
     .dash-chart-box { height: 200px; position: relative; }
-    .dash-actions-wrap {
+    .dash-ai-wrap {
       margin-top: 1rem; border-top: 1px solid var(--gray-200); padding-top: 1rem;
     }
-    .dash-actions-inner { height: 110px; }
+    .dash-ai-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .action-summary-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .35rem 0; border-bottom: 1px solid var(--gray-100);
+    }
+    .action-summary-row:last-child { border-bottom: none; }
+    .action-summary-label { font-size: 12px; color: var(--gray-800); }
+    .action-summary-count { font-size: 16px; font-weight: 600; }
+    .actions-table-wrap { max-height: 280px; overflow-y: auto; border-radius: 4px; border: 1px solid var(--gray-200); }
     @media (max-width: 900px) {
-      .dashboard-grid { grid-template-columns: 1fr; }
+      .dashboard-grid, .dash-ai-grid { grid-template-columns: 1fr; }
     }
     table {
       width: 100%;
@@ -535,7 +548,7 @@
       <div class="header-sub">Enterprise Knowledge Initiative &mdash; Drive &amp; SharePoint &times; OpenAI &middot; PoC</div>
     </div>
   </div>
-  <span class="header-badge">v1.6.0</span>
+  <span class="header-badge">v1.7.0</span>
 </header>
 
 <div class="layout">
@@ -634,14 +647,29 @@
     <!-- Prompt editor -->
     <div id="prompt-section">
       <div class="section-label">Analysis Prompt</div>
-      <textarea id="user-prompt">Analyze the metadata of the following files from a shared folder and identify:
+      <textarea id="user-prompt">Analyze the metadata of the following files from a shared folder and identify duplicates, outdated files, and cleanup opportunities.
 
-1. Duplicate or near-duplicate files (e.g. Final_v2, FINAL_approved, copy of...)
-2. Potentially outdated files (not modified in over a year)
-3. Groups of files that appear to be versions of the same document
-4. Recommended action for each file: Keep, Archive, or Review with owner
+Respond in EXACTLY this format — two sections, no other text outside them:
 
-Be specific — mention exact file names and explain your reasoning clearly.</textarea>
+[ANALYSIS]
+Write a clear summary (3-5 paragraphs) covering: key patterns found, duplicate groups, most outdated files, largest contributors to clutter, and overall health of the folder. Mention specific file names.
+
+[JSON]
+{
+  "stats": { "keep": 0, "archive": 0, "review": 0, "delete": 0 },
+  "duplicate_groups": [
+    { "group": "short group name", "files": ["file1", "file2"], "keep": "file to keep" }
+  ],
+  "actions": [
+    { "file": "exact filename", "action": "Keep", "reason": "one sentence" }
+  ]
+}
+
+Rules for the JSON:
+- "action" must be exactly one of: Keep, Archive, Review, Delete
+- In "actions", only include files you are flagging — skip files that are clearly fine
+- "stats" totals must reflect your assessment of ALL files in the list
+- "duplicate_groups" only for confirmed duplicates or near-duplicate versions</textarea>
       <p class="input-hint" style="margin-top:5px">Edit this prompt to change what the AI looks for.</p>
       <button class="btn btn-primary" id="analyze-btn" onclick="analyzeWithAI()" style="margin-top:.75rem" disabled>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -724,6 +752,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
         Analytics Dashboard
         <span style="margin-left:auto;font-size:11px;color:var(--gray-600);font-weight:400;text-transform:none;letter-spacing:0">From file metadata</span>
       </div>
+      <!-- Row 1: metadata charts — always shown after fetch -->
       <div class="dashboard-grid">
         <div class="dash-chart-wrap">
           <div class="dash-chart-label">File Types</div>
@@ -738,10 +767,63 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
           <div class="dash-chart-box"><canvas id="chart-authors"></canvas></div>
         </div>
       </div>
-      <!-- AI actions — shown only after AI analysis runs -->
-      <div id="dashboard-actions" class="dash-actions-wrap hidden">
-        <div class="dash-chart-label">AI Recommended Actions <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray-600)">(keyword mentions in report)</span></div>
-        <div class="dash-actions-inner"><canvas id="chart-actions"></canvas></div>
+      <!-- Row 2: more metadata charts -->
+      <div class="dashboard-grid" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--gray-200)">
+        <div class="dash-chart-wrap">
+          <div class="dash-chart-label">Storage by Type</div>
+          <div class="dash-chart-box"><canvas id="chart-storage"></canvas></div>
+        </div>
+        <div class="dash-chart-wrap">
+          <div class="dash-chart-label">Files Created per Month</div>
+          <div class="dash-chart-box"><canvas id="chart-timeline"></canvas></div>
+        </div>
+        <div class="dash-chart-wrap">
+          <div class="dash-chart-label">Files per Folder</div>
+          <div class="dash-chart-box"><canvas id="chart-folders"></canvas></div>
+        </div>
+      </div>
+      <!-- AI section — shown only after analysis runs -->
+      <div id="dashboard-ai" class="dash-ai-wrap hidden">
+        <div class="dash-chart-label" style="margin-bottom:.75rem">
+          AI Analysis Results
+          <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray-600);margin-left:.5rem">Structured data extracted from AI report</span>
+        </div>
+        <div class="dash-ai-grid">
+          <!-- Action breakdown donut -->
+          <div class="dash-chart-wrap">
+            <div class="dash-chart-label">Recommended Actions</div>
+            <div class="dash-chart-box"><canvas id="chart-actions"></canvas></div>
+          </div>
+          <!-- Duplicate groups stat tiles -->
+          <div class="dash-chart-wrap">
+            <div class="dash-chart-label">Duplicate Groups Found</div>
+            <div style="display:flex;flex-direction:column;gap:.75rem;padding-top:.25rem">
+              <div class="stat-card" style="text-align:center;padding:.75rem">
+                <div class="stat-num" id="dup-groups-count" style="color:var(--red)">—</div>
+                <div class="stat-label">Duplicate groups</div>
+              </div>
+              <div class="stat-card" style="text-align:center;padding:.75rem">
+                <div class="stat-num" id="dup-files-count" style="color:var(--yellow)">—</div>
+                <div class="stat-label">Files involved</div>
+              </div>
+            </div>
+          </div>
+          <!-- Action count summary -->
+          <div class="dash-chart-wrap">
+            <div class="dash-chart-label">Action Totals</div>
+            <div id="action-summary" style="padding-top:.25rem"></div>
+          </div>
+        </div>
+        <!-- Flagged files table -->
+        <div>
+          <div class="dash-chart-label" style="margin-bottom:.5rem">Flagged Files — AI Recommendations</div>
+          <div class="actions-table-wrap">
+            <table>
+              <thead><tr><th>File</th><th>Action</th><th>Reason</th></tr></thead>
+              <tbody id="actions-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -766,7 +848,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.6.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.7.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -880,9 +962,183 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
         }
       }
     });
+
+    // ── 4. Storage by File Type (Horizontal Bar, MB) ─────────────────────────
+    const typeStorage = {};
+    files.forEach(f => {
+      const t = mimeLabel(f.mimeType || '');
+      typeStorage[t] = (typeStorage[t] || 0) + (parseInt(f.size) || 0);
+    });
+    const MB = 1048576;
+    const storageEntries = Object.entries(typeStorage)
+      .filter(e => e[1] > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 7);
+    destroyChart('storage');
+    if (storageEntries.length) {
+      charts.storage = new Chart(document.getElementById('chart-storage'), {
+        type: 'bar',
+        data: {
+          labels: storageEntries.map(e => e[0]),
+          datasets: [{
+            label: 'MB',
+            data: storageEntries.map(e => parseFloat((e[1] / MB).toFixed(2))),
+            backgroundColor: CHART_COLORS.slice(0, storageEntries.length),
+            borderRadius: 4, borderWidth: 0
+          }]
+        },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} MB` } } },
+          scales: {
+            x: { grid: { color: '#E8EAED' }, ticks: { font: { size: 11, family: 'Inter' } } },
+            y: { grid: { display: false }, ticks: { font: { size: 11, family: 'Inter' } } }
+          }
+        }
+      });
+    }
+
+    // ── 5. Files Created per Month (Line, last 24 months) ────────────────────
+    const nowDate = new Date();
+    const monthBuckets = {};
+    const monthLabels = [];
+    for (let i = 23; i >= 0; i--) {
+      const d = new Date(nowDate.getFullYear(), nowDate.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      monthBuckets[key] = 0;
+      monthLabels.push({ key, label });
+    }
+    files.forEach(f => {
+      const ts = f.createdTime || f.modifiedTime;
+      if (!ts) return;
+      const d = new Date(ts);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (key in monthBuckets) monthBuckets[key]++;
+    });
+    destroyChart('timeline');
+    charts.timeline = new Chart(document.getElementById('chart-timeline'), {
+      type: 'line',
+      data: {
+        labels: monthLabels.map(m => m.label),
+        datasets: [{
+          label: 'Files',
+          data: monthLabels.map(m => monthBuckets[m.key]),
+          borderColor: '#1967D2',
+          backgroundColor: 'rgba(25,103,210,0.08)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} files` } } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10, family: 'Inter' }, maxRotation: 45, maxTicksLimit: 12 } },
+          y: { grid: { color: '#E8EAED' }, ticks: { font: { size: 11 }, precision: 0 } }
+        }
+      }
+    });
+
+    // ── 6. Files per Folder (Horizontal Bar, top 8) ──────────────────────────
+    const folderCounts = {};
+    files.forEach(f => {
+      const raw = f.folderPath || '(root)';
+      // Show the deepest folder segment for a clean label
+      const segments = raw.split('/').map(s => s.trim()).filter(Boolean);
+      const label = segments.length ? segments[segments.length - 1] : '(root)';
+      folderCounts[label] = (folderCounts[label] || 0) + 1;
+    });
+    const topFolders = Object.entries(folderCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    destroyChart('folders');
+    if (topFolders.length) {
+      charts.folders = new Chart(document.getElementById('chart-folders'), {
+        type: 'bar',
+        data: {
+          labels: topFolders.map(e => e[0]),
+          datasets: [{
+            label: 'Files',
+            data: topFolders.map(e => e[1]),
+            backgroundColor: '#9C27B0',
+            borderRadius: 4, borderWidth: 0
+          }]
+        },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} files` } } },
+          scales: {
+            x: { grid: { color: '#E8EAED' }, ticks: { font: { size: 11, family: 'Inter' } } },
+            y: { grid: { display: false }, ticks: { font: { size: 11, family: 'Inter' }, maxRotation: 0 } }
+          }
+        }
+      });
+    }
   }
 
-  // Called after AI analysis — parses action keywords from the report text.
+  // Called after AI analysis — renders structured JSON data into the dashboard.
+  function updateDashboardAI(aiData) {
+    show('dashboard-ai');
+
+    // ── Action Breakdown Donut ────────────────────────────────────────────────
+    const s = aiData.stats || {};
+    const keep = s.keep || 0, archive = s.archive || 0, review = s.review || 0, del = s.delete || 0;
+    destroyChart('actions');
+    charts.actions = new Chart(document.getElementById('chart-actions'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Keep', 'Review', 'Archive', 'Delete'],
+        datasets: [{
+          data: [keep, review, archive, del],
+          backgroundColor: ['#34A853', '#FBBC04', '#EA4335', '#3C4043'],
+          borderWidth: 2, borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '55%',
+        plugins: {
+          legend: { position: 'right', labels: { font: { size: 11, family: 'Inter' }, padding: 8, boxWidth: 12 } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw} files` } }
+        }
+      }
+    });
+
+    // ── Duplicate stat tiles ──────────────────────────────────────────────────
+    const groups = aiData.duplicate_groups || [];
+    const dupFiles = groups.reduce((sum, g) => sum + (g.files?.length || 0), 0);
+    document.getElementById('dup-groups-count').textContent = groups.length;
+    document.getElementById('dup-files-count').textContent = dupFiles;
+
+    // ── Action totals summary ─────────────────────────────────────────────────
+    const summaryItems = [
+      { label: 'Keep',    count: keep,    color: '#34A853' },
+      { label: 'Review',  count: review,  color: '#FBBC04' },
+      { label: 'Archive', count: archive, color: '#EA4335' },
+      { label: 'Delete',  count: del,     color: '#3C4043' }
+    ];
+    document.getElementById('action-summary').innerHTML = summaryItems.map(item => `
+      <div class="action-summary-row">
+        <span class="action-summary-label">${item.label}</span>
+        <span class="action-summary-count" style="color:${item.color}">${item.count}</span>
+      </div>`).join('');
+
+    // ── Flagged files table ───────────────────────────────────────────────────
+    const actions = aiData.actions || [];
+    const ACTION_BADGE = { Keep: 'badge-green', Archive: 'badge-yellow', Review: 'badge-blue', Delete: 'badge-red' };
+    const ACTION_ORDER = { Delete: 0, Archive: 1, Review: 2, Keep: 3 };
+    const sorted = [...actions].sort((a, b) => (ACTION_ORDER[a.action] ?? 4) - (ACTION_ORDER[b.action] ?? 4));
+    document.getElementById('actions-tbody').innerHTML = sorted.length
+      ? sorted.map(a => `<tr>
+          <td class="td-name" title="${a.file}">${a.file}</td>
+          <td><span class="badge ${ACTION_BADGE[a.action] || 'badge-gray'}">${a.action || '—'}</span></td>
+          <td style="font-size:12px;color:var(--gray-600)">${a.reason || '—'}</td>
+        </tr>`).join('')
+      : `<tr><td colspan="3" style="text-align:center;color:var(--gray-600);padding:1rem">No specific files flagged by AI.</td></tr>`;
+  }
+
+  // Legacy fallback — called when the AI response has no [JSON] block.
   function updateDashboardActions(aiText) {
     const lower = aiText.toLowerCase();
     const keep    = (lower.match(/\bkeep\b/g)    || []).length;
@@ -1391,7 +1647,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
         headers: aiHeaders,
         body: JSON.stringify({
           model: 'gpt-4o-mini',
-          max_tokens: 1500,
+          max_tokens: 2500,
           messages: [{ role: 'user', content: `${prompt}${truncationNote}\n\nFile metadata:\n${metaText}` }]
         })
       });
@@ -1402,12 +1658,28 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       }
 
       const data = await res.json();
-      const text = data.choices?.[0]?.message?.content || 'No response received.';
+      const raw = data.choices?.[0]?.message?.content || 'No response received.';
 
-      document.getElementById('analysis-out').innerHTML = renderMarkdown(text);
-      updateDashboardActions(text);
+      // ── Parse structured [ANALYSIS] / [JSON] response ──────────────────────
+      let narrativeText = raw;
+      let aiData = null;
+      const jsonMarker = raw.indexOf('[JSON]');
+      if (jsonMarker !== -1) {
+        narrativeText = raw.slice(0, jsonMarker).replace(/^\[ANALYSIS\]\s*/i, '').trim();
+        const jsonBlock = raw.slice(jsonMarker + 6).trim();
+        const jsonMatch = jsonBlock.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try { aiData = JSON.parse(jsonMatch[0]); } catch (_) { /* malformed JSON — skip */ }
+        }
+      }
+
+      document.getElementById('analysis-out').innerHTML = renderMarkdown(narrativeText);
+      if (aiData) updateDashboardAI(aiData);
+      else updateDashboardActions(raw); // fallback: keyword count if no JSON block
+
       fullPayload.prompt = prompt;
-      fullPayload.analysis = text;
+      fullPayload.analysis = raw;
+      if (aiData) fullPayload.ai_structured = aiData;
       fullPayload.analyzed_at = new Date().toISOString();
       fullPayload.model = 'gpt-4o-mini';
 
@@ -1493,8 +1765,12 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     document.getElementById('analysis-out').innerHTML = '<div class="analysis-empty">Analysis will appear here after you click "Analyze with AI"</div>';
     document.getElementById('analyze-btn').disabled = true;
     ['stats-section', 'metadata-section', 'dashboard-section', 'results-section'].forEach(hide);
-    hide('dashboard-actions');
-    ['types', 'age', 'authors', 'actions'].forEach(destroyChart);
+    hide('dashboard-ai');
+    ['types', 'age', 'authors', 'storage', 'timeline', 'folders', 'actions'].forEach(destroyChart);
+    document.getElementById('actions-tbody').innerHTML = '';
+    document.getElementById('dup-groups-count').textContent = '—';
+    document.getElementById('dup-files-count').textContent = '—';
+    document.getElementById('action-summary').innerHTML = '';
     show('empty-state');
     setAnalyzeStatus('', '');
     setPipeline(1);
