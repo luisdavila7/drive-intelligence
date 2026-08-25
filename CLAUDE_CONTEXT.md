@@ -134,7 +134,7 @@ Every usage, duplicate found, and recommendation made should eventually be logge
 ### Environment variables required in Vercel dashboard:
 | Variable | Value |
 |---|---|
-| `OpenAIKey` | sk-... (your OpenAI key) |
+| `OpenAIAPIKey` | sk-... (your OpenAI key) |
 | `DriveAPIKey` | AIza... (your Google Drive API key) |
 
 ### API routes (serverless functions in `/api/`):
