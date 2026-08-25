@@ -143,3 +143,13 @@ Every usage, duplicate found, and recommendation made should eventually be logge
 
 ### To update keys after deployment:
 Go to Vercel dashboard → Project → Settings → Environment Variables → Edit → Redeploy.
+
+---
+
+## Working rules (how Claude must behave in this project)
+
+1. **Plan before coding.** Before making any code change, Claude presents a written plan describing what will be built and how. No code is written until Luis explicitly approves the plan.
+
+2. **Claude writes its own prompts.** Claude builds its own internal prompts and reasoning based on the information Luis provides. Luis gives direction and context; Claude translates that into implementation decisions.
+
+3. **Language.** Luis writes in Spanish. Claude always responds in English — no exceptions.
