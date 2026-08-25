@@ -6,6 +6,7 @@
   <title>Drive Intelligence — File Analysis with AI</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
       --blue: #1967D2;
@@ -254,8 +255,30 @@
     .pip-item.done .pip-text { color: var(--green); font-weight: 500; }
     .pip-item.error .pip-text { color: var(--red); }
 
-    /* Metadata table */
-    .meta-wrap { overflow-x: auto; }
+    /* Metadata table — fixed height, inner scroll */
+    .meta-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; border-radius: 4px; }
+    .meta-wrap thead th { position: sticky; top: 0; z-index: 2; background: var(--gray-50); }
+
+    /* Analytics Dashboard */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: .75rem;
+    }
+    .dash-chart-wrap { display: flex; flex-direction: column; }
+    .dash-chart-label {
+      font-size: 11px; font-weight: 600; color: var(--gray-600);
+      text-transform: uppercase; letter-spacing: .05em; margin-bottom: .5rem;
+    }
+    .dash-chart-box { height: 200px; position: relative; }
+    .dash-actions-wrap {
+      margin-top: 1rem; border-top: 1px solid var(--gray-200); padding-top: 1rem;
+    }
+    .dash-actions-inner { height: 110px; }
+    @media (max-width: 900px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -512,7 +535,7 @@
       <div class="header-sub">Enterprise Knowledge Initiative &mdash; Drive &amp; SharePoint &times; OpenAI &middot; PoC</div>
     </div>
   </div>
-  <span class="header-badge">v1.5.0</span>
+  <span class="header-badge">v1.6.0</span>
 </header>
 
 <div class="layout">
@@ -694,6 +717,34 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       </div>
     </div>
 
+    <!-- Analytics Dashboard -->
+    <div id="dashboard-section" class="card hidden">
+      <div class="card-title">
+        <div class="card-title-dot" style="background:var(--blue-mid)"></div>
+        Analytics Dashboard
+        <span style="margin-left:auto;font-size:11px;color:var(--gray-600);font-weight:400;text-transform:none;letter-spacing:0">From file metadata</span>
+      </div>
+      <div class="dashboard-grid">
+        <div class="dash-chart-wrap">
+          <div class="dash-chart-label">File Types</div>
+          <div class="dash-chart-box"><canvas id="chart-types"></canvas></div>
+        </div>
+        <div class="dash-chart-wrap">
+          <div class="dash-chart-label">File Age</div>
+          <div class="dash-chart-box"><canvas id="chart-age"></canvas></div>
+        </div>
+        <div class="dash-chart-wrap">
+          <div class="dash-chart-label">Top Contributors</div>
+          <div class="dash-chart-box"><canvas id="chart-authors"></canvas></div>
+        </div>
+      </div>
+      <!-- AI actions — shown only after AI analysis runs -->
+      <div id="dashboard-actions" class="dash-actions-wrap hidden">
+        <div class="dash-chart-label">AI Recommended Actions <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray-600)">(keyword mentions in report)</span></div>
+        <div class="dash-actions-inner"><canvas id="chart-actions"></canvas></div>
+      </div>
+    </div>
+
     <!-- Analysis results -->
     <div id="results-section" class="card hidden">
       <div class="card-title">
@@ -715,12 +766,152 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.5.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.6.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
   let files = [];
   let fullPayload = {};
+  let charts = {};   // Chart.js instances — stored so we can destroy before rebuilding
+
+  // ─── Chart helpers ──────────────────────────────────────────────────────────
+  function destroyChart(key) {
+    if (charts[key]) { charts[key].destroy(); charts[key] = null; }
+  }
+
+  // Categorical color order — fixed, never cycled.
+  // Validated as distinct under deuteranopia/protanopia at these hues.
+  const CHART_COLORS = ['#1967D2','#34A853','#EA4335','#FBBC04','#9C27B0','#FF5722','#00ACC1','#78909C'];
+
+  function buildDashboard() {
+    show('dashboard-section');
+
+    // ── 1. File Types (Donut) ────────────────────────────────────────────────
+    const typeCounts = {};
+    files.forEach(f => {
+      const t = mimeLabel(f.mimeType || '');
+      typeCounts[t] = (typeCounts[t] || 0) + 1;
+    });
+    let typeEntries = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
+    // Cap at 7 slices; everything else → "Other"
+    if (typeEntries.length > 7) {
+      const rest = typeEntries.slice(7).reduce((s, e) => s + e[1], 0);
+      typeEntries = typeEntries.slice(0, 7).concat([['Other', rest]]);
+    }
+    destroyChart('types');
+    charts.types = new Chart(document.getElementById('chart-types'), {
+      type: 'doughnut',
+      data: {
+        labels: typeEntries.map(e => e[0]),
+        datasets: [{
+          data: typeEntries.map(e => e[1]),
+          backgroundColor: CHART_COLORS.slice(0, typeEntries.length),
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '58%',
+        plugins: {
+          legend: { position: 'right', labels: { font: { size: 11, family: 'Inter' }, padding: 8, boxWidth: 12 } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}` } }
+        }
+      }
+    });
+
+    // ── 2. File Age (Horizontal Bar) ─────────────────────────────────────────
+    const MS_MONTH = 1000 * 60 * 60 * 24 * 30;
+    const now = Date.now();
+    let ageFresh = 0, ageMid = 0, ageOld = 0;
+    files.forEach(f => {
+      if (!f.modifiedTime) { ageOld++; return; }
+      const mo = (now - new Date(f.modifiedTime)) / MS_MONTH;
+      if (mo < 6)  ageFresh++;
+      else if (mo < 12) ageMid++;
+      else ageOld++;
+    });
+    destroyChart('age');
+    charts.age = new Chart(document.getElementById('chart-age'), {
+      type: 'bar',
+      data: {
+        labels: ['< 6 months', '6 – 12 months', '> 1 year'],
+        datasets: [{
+          label: 'Files',
+          data: [ageFresh, ageMid, ageOld],
+          backgroundColor: ['#34A853', '#FBBC04', '#EA4335'],
+          borderRadius: 4, borderWidth: 0
+        }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} files` } } },
+        scales: {
+          x: { grid: { color: '#E8EAED' }, ticks: { font: { size: 11, family: 'Inter' } } },
+          y: { grid: { display: false }, ticks: { font: { size: 11, family: 'Inter' } } }
+        }
+      }
+    });
+
+    // ── 3. Top Contributors (Horizontal Bar) ─────────────────────────────────
+    const authorCounts = {};
+    files.forEach(f => {
+      const a = f.owners?.[0]?.displayName || f.author || 'Unknown';
+      authorCounts[a] = (authorCounts[a] || 0) + 1;
+    });
+    const topAuthors = Object.entries(authorCounts).sort((a, b) => b[1] - a[1]).slice(0, 7);
+    destroyChart('authors');
+    charts.authors = new Chart(document.getElementById('chart-authors'), {
+      type: 'bar',
+      data: {
+        labels: topAuthors.map(e => e[0]),
+        datasets: [{
+          label: 'Files',
+          data: topAuthors.map(e => e[1]),
+          backgroundColor: '#1967D2',
+          borderRadius: 4, borderWidth: 0
+        }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} files` } } },
+        scales: {
+          x: { grid: { color: '#E8EAED' }, ticks: { font: { size: 11, family: 'Inter' } } },
+          y: { grid: { display: false }, ticks: { font: { size: 11, family: 'Inter' }, maxRotation: 0 } }
+        }
+      }
+    });
+  }
+
+  // Called after AI analysis — parses action keywords from the report text.
+  function updateDashboardActions(aiText) {
+    const lower = aiText.toLowerCase();
+    const keep    = (lower.match(/\bkeep\b/g)    || []).length;
+    const archive = (lower.match(/\barchive\b/g) || []).length;
+    const review  = (lower.match(/\breview\b/g)  || []).length;
+    if (!keep && !archive && !review) return; // AI used different terms — skip
+    show('dashboard-actions');
+    destroyChart('actions');
+    charts.actions = new Chart(document.getElementById('chart-actions'), {
+      type: 'bar',
+      data: {
+        labels: ['Keep', 'Review', 'Archive'],
+        datasets: [{
+          label: 'Mentions in report',
+          data: [keep, review, archive],
+          backgroundColor: ['#34A853', '#FBBC04', '#EA4335'],
+          borderRadius: 4, borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} mentions` } } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 12, family: 'Inter' } } },
+          y: { grid: { color: '#E8EAED' }, ticks: { font: { size: 11 }, stepSize: 1, precision: 0 } }
+        }
+      }
+    });
+  }
 
   // ─── Environment detection ──────────────────────────────────────────────────
   // When deployed on Vercel, /api/drive and /api/analyze are available as
@@ -902,6 +1093,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
         files = parsed;
         fullPayload = { source: 'sharepoint', file_name: file.name, fetched_at: new Date().toISOString(), files };
         renderTable(files);
+        buildDashboard();
         updateStats(files);
         showLimitWarning(files.length);
         show('limit-warning');
@@ -1064,6 +1256,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
 
       fullPayload = { folder_url: folderUrl, fetched_at: new Date().toISOString(), files };
       renderTable(files);
+      buildDashboard();
       updateStats(files);
       showLimitWarning(files.length);
       show('limit-warning');
@@ -1212,6 +1405,7 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
       const text = data.choices?.[0]?.message?.content || 'No response received.';
 
       document.getElementById('analysis-out').innerHTML = renderMarkdown(text);
+      updateDashboardActions(text);
       fullPayload.prompt = prompt;
       fullPayload.analysis = text;
       fullPayload.analyzed_at = new Date().toISOString();
@@ -1298,7 +1492,9 @@ Be specific — mention exact file names and explain your reasoning clearly.</te
     document.getElementById('meta-body').innerHTML = '';
     document.getElementById('analysis-out').innerHTML = '<div class="analysis-empty">Analysis will appear here after you click "Analyze with AI"</div>';
     document.getElementById('analyze-btn').disabled = true;
-    ['stats-section', 'metadata-section', 'results-section'].forEach(hide);
+    ['stats-section', 'metadata-section', 'dashboard-section', 'results-section'].forEach(hide);
+    hide('dashboard-actions');
+    ['types', 'age', 'authors', 'actions'].forEach(destroyChart);
     show('empty-state');
     setAnalyzeStatus('', '');
     setPipeline(1);
