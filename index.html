@@ -7,6 +7,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     :root {
       --blue: #1967D2;
@@ -292,6 +294,85 @@
     @media (max-width: 900px) {
       .dashboard-grid, .dash-ai-grid { grid-template-columns: 1fr; }
     }
+
+    /* ─── Compare Panel ──────────────────────────────────────────────────── */
+    .cmp-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.25);
+      z-index: 200; opacity: 0; pointer-events: none; transition: opacity .25s;
+    }
+    .cmp-overlay.open { opacity: 1; pointer-events: all; }
+    .cmp-panel {
+      position: fixed; top: 0; right: 0; bottom: 0; width: 400px;
+      background: var(--white); border-left: 1px solid var(--gray-200);
+      box-shadow: -4px 0 20px rgba(0,0,0,0.12);
+      z-index: 201; display: flex; flex-direction: column;
+      transform: translateX(100%); transition: transform .28s cubic-bezier(.4,0,.2,1);
+      overflow: hidden;
+    }
+    .cmp-panel.open { transform: translateX(0); }
+    .cmp-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 1.25rem; border-bottom: 1px solid var(--gray-200); flex-shrink: 0;
+    }
+    .cmp-title { font-size: 14px; font-weight: 600; color: var(--gray-900); }
+    .cmp-close {
+      width: 28px; height: 28px; border: none; background: none; cursor: pointer;
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+      color: var(--gray-600); font-size: 18px; line-height: 1;
+    }
+    .cmp-close:hover { background: var(--gray-100); color: var(--gray-900); }
+    .cmp-body {
+      flex: 1; overflow-y: auto; padding: 1.25rem;
+      display: flex; flex-direction: column; gap: 1rem;
+    }
+    .cmp-slot-label {
+      font-size: 11px; font-weight: 600; color: var(--gray-600);
+      text-transform: uppercase; letter-spacing: .05em; margin-bottom: .4rem;
+    }
+    .cmp-drop {
+      border: 2px dashed var(--gray-300); border-radius: var(--radius);
+      padding: 1.25rem 1rem; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s; position: relative;
+    }
+    .cmp-drop:hover, .cmp-drop.drag-over { border-color: var(--blue); background: var(--blue-light); }
+    .cmp-drop input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .cmp-drop-icon { font-size: 24px; margin-bottom: .4rem; opacity: .5; }
+    .cmp-drop-label { font-size: 12px; color: var(--gray-600); }
+    .cmp-drop-limits { font-size: 11px; color: var(--gray-400); margin-top: .25rem; }
+    .cmp-file-info {
+      background: var(--gray-50); border: 1px solid var(--gray-200);
+      border-radius: var(--radius); padding: .75rem 1rem; font-size: 12px;
+    }
+    .cmp-file-name { font-weight: 600; color: var(--gray-900); margin-bottom: .2rem; word-break: break-all; }
+    .cmp-file-meta { color: var(--gray-600); font-size: 11px; }
+    .cmp-file-warn { color: #7B5800; font-size: 11px; margin-top: .25rem; }
+    .cmp-file-err { color: var(--red); font-size: 12px; padding: .5rem 0; }
+    .cmp-divider { text-align: center; font-size: 11px; color: var(--gray-400); position: relative; }
+    .cmp-divider::before {
+      content: ''; position: absolute; top: 50%; left: 0; right: 0;
+      height: 1px; background: var(--gray-200);
+    }
+    .cmp-divider span { background: var(--white); padding: 0 .6rem; position: relative; }
+    .cmp-result { border: 1px solid var(--gray-200); border-radius: var(--radius); overflow: hidden; }
+    .cmp-result-section { padding: .75rem 1rem; border-bottom: 1px solid var(--gray-100); }
+    .cmp-result-section:last-child { border-bottom: none; }
+    .cmp-result-label {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--gray-600); margin-bottom: .35rem;
+    }
+    .cmp-verdict {
+      display: inline-block; font-size: 12px; font-weight: 600;
+      padding: .3rem .85rem; border-radius: 20px;
+    }
+    .cmp-verdict.a       { background: var(--blue-light); color: var(--blue); }
+    .cmp-verdict.b       { background: var(--green-light); color: var(--green); }
+    .cmp-verdict.both    { background: var(--yellow-light); color: #7B5800; }
+    .cmp-verdict.neither { background: var(--gray-100); color: var(--gray-600); }
+    .cmp-result-body { font-size: 12px; color: var(--gray-800); line-height: 1.6; }
+    .cmp-result-body ul { padding-left: 1.25rem; margin: .25rem 0; }
+    .cmp-result-body li { margin-bottom: .2rem; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -548,8 +629,75 @@
       <div class="header-sub">Enterprise Knowledge Initiative &mdash; Drive &amp; SharePoint &times; OpenAI &middot; PoC</div>
     </div>
   </div>
-  <span class="header-badge">v1.7.0</span>
+  <div style="display:flex;align-items:center;gap:.75rem">
+    <button class="btn btn-secondary" style="font-size:12px;white-space:nowrap;gap:5px" onclick="openCompare()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      Compare Files
+    </button>
+    <span class="header-badge">v1.8.0</span>
+  </div>
 </header>
+
+<!-- ── Compare overlay ─────────────────────────────────────────────────── -->
+<div class="cmp-overlay" id="cmp-overlay" onclick="closeCompare()"></div>
+
+<!-- ── Compare slide-in panel ──────────────────────────────────────────── -->
+<div class="cmp-panel" id="cmp-panel">
+  <div class="cmp-header">
+    <div>
+      <div class="cmp-title">File Comparison</div>
+      <div style="font-size:11px;color:var(--gray-600);margin-top:2px">Drop two documents — AI picks the better one</div>
+    </div>
+    <button class="cmp-close" onclick="closeCompare()" title="Close">✕</button>
+  </div>
+  <div class="cmp-body">
+
+    <!-- Slot A -->
+    <div>
+      <div class="cmp-slot-label">File A</div>
+      <div class="cmp-drop" id="cmp-drop-a"
+           ondragover="cmpDragOver(event,'a')" ondragleave="cmpDragLeave('a')" ondrop="cmpDrop(event,'a')">
+        <input type="file" id="cmp-input-a" accept=".pdf,.docx"
+               onchange="cmpFileSelected('a', this.files[0])"/>
+        <div class="cmp-drop-icon">📄</div>
+        <div class="cmp-drop-label">Drop file here or click to browse</div>
+        <div class="cmp-drop-limits">PDF · DOCX &nbsp;·&nbsp; max 500 KB</div>
+      </div>
+      <div id="cmp-info-a" style="display:none;margin-top:.5rem"></div>
+    </div>
+
+    <div class="cmp-divider"><span>vs</span></div>
+
+    <!-- Slot B -->
+    <div>
+      <div class="cmp-slot-label">File B</div>
+      <div class="cmp-drop" id="cmp-drop-b"
+           ondragover="cmpDragOver(event,'b')" ondragleave="cmpDragLeave('b')" ondrop="cmpDrop(event,'b')">
+        <input type="file" id="cmp-input-b" accept=".pdf,.docx"
+               onchange="cmpFileSelected('b', this.files[0])"/>
+        <div class="cmp-drop-icon">📄</div>
+        <div class="cmp-drop-label">Drop file here or click to browse</div>
+        <div class="cmp-drop-limits">PDF · DOCX &nbsp;·&nbsp; max 500 KB</div>
+      </div>
+      <div id="cmp-info-b" style="display:none;margin-top:.5rem"></div>
+    </div>
+
+    <button class="btn btn-primary" id="cmp-btn" onclick="runComparison()" disabled style="width:100%">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      Compare with AI
+    </button>
+
+    <div id="cmp-status" style="font-size:11px;color:var(--gray-600);text-align:center;min-height:16px;font-family:'JetBrains Mono',monospace"></div>
+
+    <div id="cmp-result" style="display:none"></div>
+
+    <!-- Limitations notice -->
+    <div style="font-size:11px;color:var(--gray-400);border-top:1px solid var(--gray-100);padding-top:.75rem;line-height:1.6">
+      ⚠ Analysis uses the first 4,000 extracted characters per file.
+      Image-only PDFs (scanned) cannot be read. File content is processed in your browser and sent to OpenAI via the secure proxy.
+    </div>
+  </div>
+</div>
 
 <div class="layout">
 
@@ -848,7 +996,7 @@ Rules for the JSON:
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.7.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.8.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -1774,6 +1922,235 @@ Rules for the JSON:
     show('empty-state');
     setAnalyzeStatus('', '');
     setPipeline(1);
+  }
+
+  // ─── File Comparison Module ─────────────────────────────────────────────────
+  const compareSlots = { a: null, b: null };
+  const CMP_MAX_BYTES = 500 * 1024;   // 500 KB hard limit per file
+  const CMP_MAX_CHARS = 4000;          // extracted-text cap sent to AI
+
+  // Set PDF.js worker URL so it can run async in the background
+  if (typeof pdfjsLib !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  function openCompare() {
+    document.getElementById('cmp-overlay').classList.add('open');
+    document.getElementById('cmp-panel').classList.add('open');
+  }
+  function closeCompare() {
+    document.getElementById('cmp-overlay').classList.remove('open');
+    document.getElementById('cmp-panel').classList.remove('open');
+  }
+
+  function cmpDragOver(e, slot) {
+    e.preventDefault();
+    document.getElementById('cmp-drop-' + slot).classList.add('drag-over');
+  }
+  function cmpDragLeave(slot) {
+    document.getElementById('cmp-drop-' + slot).classList.remove('drag-over');
+  }
+  function cmpDrop(e, slot) {
+    e.preventDefault();
+    cmpDragLeave(slot);
+    const file = e.dataTransfer.files[0];
+    if (file) cmpFileSelected(slot, file);
+  }
+
+  async function cmpFileSelected(slot, file) {
+    const infoEl = document.getElementById('cmp-info-' + slot);
+    infoEl.style.display = 'block';
+    infoEl.innerHTML = `<div class="cmp-file-info"><div class="cmp-file-meta">Reading file…</div></div>`;
+    document.getElementById('cmp-btn').disabled = true;
+
+    try {
+      const result = await extractTextFromFile(file);
+      compareSlots[slot] = { ...result, name: file.name };
+      infoEl.innerHTML = `
+        <div class="cmp-file-info">
+          <div class="cmp-file-name">${file.name}</div>
+          <div class="cmp-file-meta">
+            ${(file.size / 1024).toFixed(1)} KB
+            ${result.pages ? ' &nbsp;·&nbsp; ' + result.pages + ' pages' : ''}
+            &nbsp;·&nbsp; ~${result.text.length.toLocaleString()} chars extracted
+          </div>
+          ${result.truncated ? '<div class="cmp-file-warn">⚠ Text truncated to first 4,000 characters</div>' : ''}
+        </div>`;
+    } catch (err) {
+      compareSlots[slot] = null;
+      infoEl.innerHTML = `<div class="cmp-file-err">❌ ${err.message}</div>`;
+    }
+
+    // Enable Compare button only when both slots have valid text
+    document.getElementById('cmp-btn').disabled = !(compareSlots.a && compareSlots.b);
+  }
+
+  async function extractTextFromFile(file) {
+    if (file.size > CMP_MAX_BYTES) {
+      throw new Error(`File too large (${(file.size / 1024).toFixed(0)} KB). Maximum is 500 KB.`);
+    }
+    const name = file.name.toLowerCase();
+
+    // ── PDF ────────────────────────────────────────────────────────────────
+    if (name.endsWith('.pdf')) {
+      if (typeof pdfjsLib === 'undefined') throw new Error('PDF.js not loaded — try refreshing the page.');
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      let text = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(item => item.str).join(' ') + '\n';
+        if (text.length > CMP_MAX_CHARS * 1.5) break; // enough — stop early
+      }
+      if (!text.trim()) throw new Error('No text found in this PDF. It may be image-only (scanned document).');
+      const truncated = text.length > CMP_MAX_CHARS;
+      return { text: text.slice(0, CMP_MAX_CHARS), truncated, pages: pdf.numPages };
+    }
+
+    // ── DOCX ──────────────────────────────────────────────────────────────
+    if (name.endsWith('.docx')) {
+      if (typeof mammoth === 'undefined') throw new Error('mammoth.js not loaded — try refreshing the page.');
+      const buf = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer: buf });
+      const text = result.value || '';
+      if (!text.trim()) throw new Error('No text could be extracted from this Word document.');
+      const truncated = text.length > CMP_MAX_CHARS;
+      return { text: text.slice(0, CMP_MAX_CHARS), truncated, pages: null };
+    }
+
+    throw new Error('Unsupported format. Only PDF and DOCX files are accepted.');
+  }
+
+  async function runComparison() {
+    const a = compareSlots.a;
+    const b = compareSlots.b;
+    if (!a || !b) return;
+
+    const btn      = document.getElementById('cmp-btn');
+    const statusEl = document.getElementById('cmp-status');
+    const resultEl = document.getElementById('cmp-result');
+
+    btn.disabled = true;
+    btn.textContent = 'Analyzing…';
+    statusEl.style.color = 'var(--gray-600)';
+    statusEl.textContent = 'Sending to OpenAI…';
+    resultEl.style.display = 'none';
+
+    // Prompt — designed by Claude, not visible in the UI
+    const systemPrompt =
+      `You are a document analyst. Compare the two document excerpts below and determine ` +
+      `which is more complete, current, and authoritative for business use. ` +
+      `Base your analysis only on the text provided.`;
+
+    const userPrompt =
+      `FILE A: "${a.name}"\n` +
+      (a.truncated ? '[Note: text truncated at 4,000 characters]\n' : '') +
+      `---\n${a.text}\n\n` +
+      `FILE B: "${b.name}"\n` +
+      (b.truncated ? '[Note: text truncated at 4,000 characters]\n' : '') +
+      `---\n${b.text}\n\n` +
+      `Respond in EXACTLY this format, no text outside the sections:\n\n` +
+      `[RECOMMENDATION]\n` +
+      `Write exactly one of: File A | File B | Both | Neither\n\n` +
+      `[DIFFERENCES]\n` +
+      `List 3-6 key differences as bullet points starting with -\n\n` +
+      `[REASONING]\n` +
+      `2-3 sentences explaining your recommendation.\n\n` +
+      `[VERDICT]\n` +
+      `One clear sentence: which file to keep and why.`;
+
+    try {
+      const aiUrl = HAS_PROXY ? '/api/analyze' : 'https://api.openai.com/v1/chat/completions';
+      const aiHeaders = HAS_PROXY
+        ? { 'Content-Type': 'application/json' }
+        : { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getKeys().openai}` };
+
+      const res = await fetch(aiUrl, {
+        method: 'POST',
+        headers: aiHeaders,
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          max_tokens: 800,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user',   content: userPrompt }
+          ]
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || 'OpenAI API error');
+      }
+
+      const data = await res.json();
+      const raw  = data.choices?.[0]?.message?.content || '';
+      renderCompareResult(raw, a.name, b.name);
+      statusEl.textContent = '✓ Comparison complete';
+    } catch (e) {
+      statusEl.textContent = '❌ ' + e.message;
+      statusEl.style.color = 'var(--red)';
+    }
+
+    btn.disabled = false;
+    btn.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
+      '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg> Compare with AI';
+  }
+
+  function renderCompareResult(raw, nameA, nameB) {
+    // Extract each section from the structured response
+    function getSection(tag) {
+      const m = raw.match(new RegExp('\\[' + tag + '\\]\\s*([\\s\\S]*?)(?=\\[|$)', 'i'));
+      return m ? m[1].trim() : '';
+    }
+    const rec     = getSection('RECOMMENDATION');
+    const diffs   = getSection('DIFFERENCES');
+    const reason  = getSection('REASONING');
+    const verdict = getSection('VERDICT');
+
+    // Map recommendation text to a CSS class + display label
+    let vClass = 'neither';
+    if (/file\s*a/i.test(rec))  vClass = 'a';
+    else if (/file\s*b/i.test(rec)) vClass = 'b';
+    else if (/both/i.test(rec)) vClass = 'both';
+
+    const verdictLabel =
+      vClass === 'a'    ? '📄 ' + nameA :
+      vClass === 'b'    ? '📄 ' + nameB :
+      vClass === 'both' ? 'Both files have value' :
+                          'Neither recommended';
+
+    // Format bullet list
+    const diffsHtml = diffs
+      ? '<ul>' + diffs.split('\n')
+          .filter(l => l.trim())
+          .map(l => `<li>${l.replace(/^[-*•]\s*/, '')}</li>`)
+          .join('') + '</ul>'
+      : '<em style="color:var(--gray-400)">No differences listed.</em>';
+
+    document.getElementById('cmp-result').style.display = 'block';
+    document.getElementById('cmp-result').innerHTML = `
+      <div class="cmp-result">
+        <div class="cmp-result-section">
+          <div class="cmp-result-label">Recommendation</div>
+          <span class="cmp-verdict ${vClass}">${verdictLabel}</span>
+        </div>
+        <div class="cmp-result-section">
+          <div class="cmp-result-label">Key Differences</div>
+          <div class="cmp-result-body">${diffsHtml}</div>
+        </div>
+        ${reason ? `<div class="cmp-result-section">
+          <div class="cmp-result-label">Reasoning</div>
+          <div class="cmp-result-body">${reason}</div>
+        </div>` : ''}
+        ${verdict ? `<div class="cmp-result-section" style="background:var(--gray-50)">
+          <div class="cmp-result-label">Verdict</div>
+          <div class="cmp-result-body" style="font-weight:500">${verdict}</div>
+        </div>` : ''}
+      </div>`;
   }
 
   // ─── Init ───────────────────────────────────────────────────────────────────
