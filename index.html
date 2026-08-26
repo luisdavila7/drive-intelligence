@@ -1603,8 +1603,10 @@ Rules for the JSON:
 
     const res = await fetch(fetchUrl);
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || 'Drive API error');
+      const body = await res.text();
+      let msg = `Drive API error (${res.status})`;
+      try { msg = JSON.parse(body).error?.message || msg; } catch (_) { if (body) msg = body; }
+      throw new Error(msg);
     }
     const { files: items = [] } = await res.json();
 
@@ -1801,8 +1803,10 @@ Rules for the JSON:
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || 'OpenAI API error');
+        const body = await res.text();
+        let msg = `OpenAI API error (${res.status})`;
+        try { msg = JSON.parse(body).error?.message || msg; } catch (_) { if (body) msg = body; }
+        throw new Error(msg);
       }
 
       const data = await res.json();
@@ -2081,8 +2085,10 @@ Rules for the JSON:
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || 'OpenAI API error');
+        const body = await res.text();
+        let msg = `OpenAI API error (${res.status})`;
+        try { msg = JSON.parse(body).error?.message || msg; } catch (_) { if (body) msg = body; }
+        throw new Error(msg);
       }
 
       const data = await res.json();
