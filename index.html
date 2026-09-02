@@ -156,6 +156,33 @@
       box-shadow: 0 0 0 3px rgba(66,133,244,.15);
     }
     input[type=text]::placeholder, textarea::placeholder { color: var(--gray-400); }
+    /* Collapsible prompt editor */
+    .prompt-toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .prompt-toggle-btn {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 500; color: var(--blue);
+      background: none; border: none; cursor: pointer; padding: 2px 4px;
+      border-radius: 4px; transition: background .15s;
+    }
+    .prompt-toggle-btn:hover { background: var(--blue-light); }
+    .prompt-custom-badge {
+      font-size: 10px; font-weight: 600; color: var(--blue);
+      background: var(--blue-light); padding: 1px 7px; border-radius: 20px;
+      letter-spacing: .03em;
+    }
+    .prompt-collapsible {
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height .3s cubic-bezier(.4,0,.2,1), opacity .25s;
+      opacity: 0;
+    }
+    .prompt-collapsible.open {
+      max-height: 600px;
+      opacity: 1;
+    }
+
     .input-hint {
       font-size: 11px;
       color: var(--gray-600);
@@ -794,8 +821,23 @@
 
     <!-- Prompt editor -->
     <div id="prompt-section">
-      <div class="section-label">Analysis Prompt</div>
-      <textarea id="user-prompt">Analyze the metadata of the following files from a shared folder and identify duplicates, outdated files, and cleanup opportunities.
+
+      <!-- Toggle row: label + optional custom badge + edit/hide button -->
+      <div class="prompt-toggle-row">
+        <div class="section-label" style="margin-bottom:0">
+          Analysis Prompt
+          <span id="prompt-custom-badge" class="prompt-custom-badge" style="display:none;margin-left:6px">custom</span>
+        </div>
+        <button class="prompt-toggle-btn" id="prompt-toggle-btn" onclick="togglePrompt()">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit
+        </button>
+      </div>
+
+      <!-- Collapsible area — hidden by default -->
+      <div class="prompt-collapsible" id="prompt-collapsible">
+        <div style="margin-top:.6rem">
+          <textarea id="user-prompt" oninput="markPromptCustomized()">Analyze the metadata of the following files from a shared folder and identify duplicates, outdated files, and cleanup opportunities.
 
 Respond in EXACTLY this format — two sections, no other text outside them:
 
@@ -818,7 +860,10 @@ Rules for the JSON:
 - In "actions", only include files you are flagging — skip files that are clearly fine
 - "stats" totals must reflect your assessment of ALL files in the list
 - "duplicate_groups" only for confirmed duplicates or near-duplicate versions</textarea>
-      <p class="input-hint" style="margin-top:5px">Edit this prompt to change what the AI looks for.</p>
+          <p class="input-hint" style="margin-top:5px">Edit this prompt to change what the AI looks for.</p>
+        </div>
+      </div>
+
       <button class="btn btn-primary" id="analyze-btn" onclick="analyzeWithAI()" style="margin-top:.75rem" disabled>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         Analyze with AI
@@ -1900,6 +1945,33 @@ Rules for the JSON:
     a.href = URL.createObjectURL(blob);
     a.download = type === 'meta' ? 'drive-metadata.json' : 'drive-analysis.json';
     a.click();
+  }
+
+  // ─── Prompt toggle ──────────────────────────────────────────────────────────
+  function togglePrompt() {
+    const collapsible = document.getElementById('prompt-collapsible');
+    const btn         = document.getElementById('prompt-toggle-btn');
+    const isOpen      = collapsible.classList.contains('open');
+    if (isOpen) {
+      collapsible.classList.remove('open');
+      btn.innerHTML =
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
+        '<path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>' +
+        '<path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit';
+    } else {
+      collapsible.classList.add('open');
+      btn.innerHTML =
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
+        '<path d="M18 15l-6-6-6 6"/></svg> Hide';
+    }
+  }
+
+  // Called oninput on the textarea — shows the "custom" badge once the user edits.
+  const DEFAULT_PROMPT_START = 'Analyze the metadata of the following files';
+  function markPromptCustomized() {
+    const val   = document.getElementById('user-prompt').value;
+    const badge = document.getElementById('prompt-custom-badge');
+    badge.style.display = val.startsWith(DEFAULT_PROMPT_START) ? 'none' : 'inline';
   }
 
   // ─── Reset ──────────────────────────────────────────────────────────────────
