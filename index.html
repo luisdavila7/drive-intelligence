@@ -653,7 +653,7 @@
     </div>
     <div>
       <div class="header-title">Drive Intelligence</div>
-      <div class="header-sub">Enterprise Knowledge Initiative &mdash; Drive &amp; SharePoint &times; OpenAI &middot; PoC</div>
+      <div class="header-sub">Enterprise Knowledge Initiative &mdash; FileFolder &amp; SharePoint &times; EngineAI &middot; PoC</div>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:.75rem">
@@ -661,7 +661,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
       Compare Files
     </button>
-    <span class="header-badge">v1.8.0</span>
+    <span class="header-badge">v1.8.2</span>
   </div>
 </header>
 
@@ -721,7 +721,7 @@
     <!-- Limitations notice -->
     <div style="font-size:11px;color:var(--gray-400);border-top:1px solid var(--gray-100);padding-top:.75rem;line-height:1.6">
       ⚠ Analysis uses the first 4,000 extracted characters per file.
-      Image-only PDFs (scanned) cannot be read. File content is processed in your browser and sent to OpenAI via the secure proxy.
+      Image-only PDFs (scanned) cannot be read. File content is processed in your browser and sent to EngineAI via the secure proxy.
     </div>
   </div>
 </div>
@@ -737,7 +737,7 @@
 
       <!-- Source toggle -->
       <div class="src-toggle">
-        <button class="src-btn active" id="src-drive-btn" onclick="switchSource('drive')">📁 Google Drive</button>
+        <button class="src-btn active" id="src-drive-btn" onclick="switchSource('drive')">📁 FileFolder</button>
         <button class="src-btn" id="src-sharepoint-btn" onclick="switchSource('sharepoint')">📊 SharePoint</button>
       </div>
 
@@ -752,7 +752,7 @@
           <p class="input-hint" style="margin-top:6px" id="key-hint-drive">To configure keys open DevTools <strong>F12 → Console</strong> and run:<br><code style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--gray-100);padding:2px 5px;border-radius:4px">setKeys('drive-key','openai-key')</code></p>
         </div>
         <div>
-          <label for="folder-url">Google Drive Folder URL</label>
+          <label for="folder-url">FileFolder URL</label>
           <input type="text" id="folder-url" placeholder="https://drive.google.com/drive/folders/..."/>
           <p class="input-hint">Paste a publicly shared folder link.</p>
         </div>
@@ -765,7 +765,7 @@
       <!-- SharePoint section -->
       <div id="sharepoint-section" style="display:none;flex-direction:column;gap:.75rem">
         <div>
-          <label>OpenAI API Key</label>
+          <label>EngineAI Key</label>
           <div class="key-status-row">
             <div class="key-status" id="ks-openai-sp"><div class="ks-dot"></div><span id="ks-openai-sp-label">OpenAI</span></div>
           </div>
@@ -882,7 +882,7 @@ Rules for the JSON:
       <div class="empty-state">
         <div class="empty-state-icon">📂</div>
         <h3>No folder connected yet</h3>
-        <p>Paste a public Google Drive folder URL in the sidebar and click <strong>Fetch files from Drive</strong> to get started.</p>
+        <p>Paste a public FileFolder URL in the sidebar and click <strong>Fetch files from Drive</strong> to get started.</p>
       </div>
     </div>
 
@@ -1041,7 +1041,7 @@ Rules for the JSON:
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.8.0 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.8.2 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -1398,7 +1398,7 @@ Rules for the JSON:
     if (HAS_PROXY) {
       // Running on Vercel — keys are server-side, show a single "connected" badge
       // and replace the setup instructions with a friendly confirmation.
-      const labels = { 'ks-drive': '🔒 Drive API', 'ks-openai': '🔒 OpenAI', 'ks-openai-sp': '🔒 OpenAI' };
+      const labels = { 'ks-drive': '🔒 Drive API', 'ks-openai': '🔒 EngineAI', 'ks-openai-sp': '🔒 EngineAI' };
       Object.entries(labels).forEach(([id, label]) => {
         const el = document.getElementById(id);
         if (el) { el.className = 'key-status ok'; el.innerHTML = `<span>${label}</span>`; }
@@ -1415,12 +1415,12 @@ Rules for the JSON:
     const oEl = document.getElementById('ks-openai');
     if (drive)  { dEl.className = 'key-status ok';  document.getElementById('ks-drive-label').textContent  = 'Drive API ✓'; }
     else        { dEl.className = 'key-status bad'; document.getElementById('ks-drive-label').textContent  = 'Drive API ✗'; }
-    if (openai) { oEl.className = 'key-status ok';  document.getElementById('ks-openai-label').textContent = 'OpenAI ✓'; }
-    else        { oEl.className = 'key-status bad'; document.getElementById('ks-openai-label').textContent = 'OpenAI ✗'; }
+    if (openai) { oEl.className = 'key-status ok';  document.getElementById('ks-openai-label').textContent = 'EngineAI ✓'; }
+    else        { oEl.className = 'key-status bad'; document.getElementById('ks-openai-label').textContent = 'EngineAI ✗'; }
     const spEl = document.getElementById('ks-openai-sp');
     if (spEl) {
-      if (openai) { spEl.className = 'key-status ok';  document.getElementById('ks-openai-sp-label').textContent = 'OpenAI ✓'; }
-      else        { spEl.className = 'key-status bad'; document.getElementById('ks-openai-sp-label').textContent = 'OpenAI ✗'; }
+      if (openai) { spEl.className = 'key-status ok';  document.getElementById('ks-openai-sp-label').textContent = 'EngineAI ✓'; }
+      else        { spEl.className = 'key-status bad'; document.getElementById('ks-openai-sp-label').textContent = 'EngineAI ✗'; }
     }
   }
 
@@ -1469,7 +1469,7 @@ Rules for the JSON:
   function processSharePointFile(file) {
     const { openai } = getKeys();
     if (!HAS_PROXY && !openai) {
-      alert('OpenAI API key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'\', \'your-openai-key\')');
+      alert('EngineAI key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'\', \'your-openai-key\')');
       return;
     }
 
@@ -1675,11 +1675,11 @@ Rules for the JSON:
     const folderUrl = document.getElementById('folder-url').value.trim();
 
     if (!HAS_PROXY && !drive) {
-      alert('Google Drive API key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'your-drive-key\', \'your-openai-key\')');
+      alert('FileFolder API key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'your-drive-key\', \'your-openai-key\')');
       return;
     }
     if (!folderUrl) {
-      alert('Please paste a Google Drive folder URL.');
+      alert('Please paste a FileFolder URL.');
       return;
     }
     const folderID = extractFolderID(folderUrl);
@@ -1718,7 +1718,7 @@ Rules for the JSON:
       setPipeline(3);
       document.getElementById('file-count').textContent = files.length + ' files';
     } catch (e) {
-      alert('Error fetching from Google Drive: ' + e.message + '\n\nMake sure:\n1. The folder is shared publicly\n2. The Google Drive API is enabled\n3. The API key is correct and restricted to this domain');
+      alert('Error fetching from FileFolder: ' + e.message + '\n\nMake sure:\n1. The folder is shared publicly\n2. The Google Drive API is enabled\n3. The API key is correct and restricted to this domain');
       setPipeline(1, 2);
     }
 
@@ -1794,7 +1794,7 @@ Rules for the JSON:
   async function analyzeWithAI() {
     const { openai } = getKeys();
     if (!HAS_PROXY && !openai) {
-      alert('OpenAI API key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'\', \'your-openai-key\')');
+      alert('EngineAI key is not configured.\n\nOpen DevTools (F12) → Console and run:\nsetKeys(\'\', \'your-openai-key\')');
       return;
     }
 
@@ -1805,7 +1805,7 @@ Rules for the JSON:
     btn.disabled = true;
     btn.textContent = 'Analyzing...';
     setPipeline(4);
-    setAnalyzeStatus('Sending to OpenAI...', 'var(--blue)');
+    setAnalyzeStatus('Sending to EngineAI...', 'var(--blue)');
 
     // Cap the file list to avoid exceeding the model's token limit.
     // gpt-4o-mini: 128k tokens. Each file row ≈ 40-60 tokens, so ~1200 files
@@ -1849,7 +1849,7 @@ Rules for the JSON:
 
       if (!res.ok) {
         const body = await res.text();
-        let msg = `OpenAI API error (${res.status})`;
+        let msg = `EngineAI error (${res.status})`;
         try { msg = JSON.parse(body).error?.message || msg; } catch (_) { if (body) msg = body; }
         throw new Error(msg);
       }
@@ -2111,7 +2111,7 @@ Rules for the JSON:
     btn.disabled = true;
     btn.textContent = 'Analyzing…';
     statusEl.style.color = 'var(--gray-600)';
-    statusEl.textContent = 'Sending to OpenAI…';
+    statusEl.textContent = 'Sending to EngineAI…';
     resultEl.style.display = 'none';
 
     // Prompt — designed by Claude, not visible in the UI
@@ -2158,7 +2158,7 @@ Rules for the JSON:
 
       if (!res.ok) {
         const body = await res.text();
-        let msg = `OpenAI API error (${res.status})`;
+        let msg = `EngineAI error (${res.status})`;
         try { msg = JSON.parse(body).error?.message || msg; } catch (_) { if (body) msg = body; }
         throw new Error(msg);
       }
