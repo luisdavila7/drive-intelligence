@@ -37,7 +37,7 @@ The app detects its environment at runtime:
 
 ---
 
-## Current feature set (v1.8.3)
+## Current feature set (v1.8.4)
 
 - Google Drive recursive folder scan with subfolder path tracking (UI-labeled "FileFolder")
 - SharePoint Excel export import (`.xlsx` / `.xls`) — client-side parsing with SheetJS
@@ -54,6 +54,7 @@ The app detects its environment at runtime:
 - Robust error handling: all fetch error paths read the response as text first and only attempt `JSON.parse`, so non-JSON responses (e.g. Vercel "Forbidden." or rate-limit text) display instead of crashing.
 
 - **Action Totals drill-down** (v1.8.3): each row in the dashboard's "Action Totals" (Keep/Review/Archive/Delete) is clickable — filters the Flagged Files table below to just that action, retitles it with a count, and can be cleared via "Show all". Pure front-end filter over the existing `aiData.actions` list; no prompt or backend changes.
+- **Action count fix** (v1.8.4): Action Totals / donut counts are now computed client-side from `aiData.actions` (grouped by label) plus `files.length - actions.length` for Keep, instead of trusting the AI's self-reported `stats` block. Root cause: on larger file sets the AI's own aggregate `stats` numbers drifted from its own `actions` list and didn't sum to the true file count (e.g. one real run: `stats` said Delete 20/Review 12 while only 6+6 files were actually tagged, summing to 32 instead of 107 total files). The model can't reliably self-tally counts across dozens of items — counts are now derived deterministically from data already in the response.
 
 **Note on rebrand (v1.8.2):** "OpenAI" → "EngineAI" and "Google Drive" → "FileFolder" is a **UI-text-only** rebrand — 20 visible strings changed (header, badges, labels, alerts, status/error messages). Code internals (variable names, API URLs, localStorage keys, JS comments, `setKeys()` hints) are untouched and still reference OpenAI/Drive under the hood.
 

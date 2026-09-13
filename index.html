@@ -672,7 +672,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
       Compare Files
     </button>
-    <span class="header-badge">v1.8.3</span>
+    <span class="header-badge">v1.8.4</span>
   </div>
 </header>
 
@@ -1056,7 +1056,7 @@ Rules for the JSON:
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.8.3 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.8.4 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -1292,9 +1292,26 @@ Rules for the JSON:
   function updateDashboardAI(aiData) {
     show('dashboard-ai');
 
+    // ── Action counts — computed here, NOT trusted from aiData.stats ──────────
+    // The AI's self-reported "stats" block is redundant arithmetic the model has
+    // to tally in its head across every file; in practice it drifts from the
+    // actual per-file "actions" list it just wrote (and from the true file
+    // count) — e.g. stats.delete=20 while only 6 files are actually tagged
+    // Delete. We derive the four counts ourselves instead:
+    //   - Review / Archive / Delete = count of that label in aiData.actions
+    //   - Keep = total files minus everything explicitly flagged (files the AI
+    //     didn't call out are implicitly fine, per the prompt's own rule to
+    //     "skip files that are clearly fine")
+    // This guarantees the numbers always sum to the real file count and always
+    // match what the Flagged Files table shows when filtered.
+    lastAIActions = aiData.actions || [];
+    const countOf = label => lastAIActions.filter(a => a.action === label).length;
+    const review = countOf('Review');
+    const archive = countOf('Archive');
+    const del = countOf('Delete');
+    const keep = Math.max(0, files.length - lastAIActions.length);
+
     // ── Action Breakdown Donut ────────────────────────────────────────────────
-    const s = aiData.stats || {};
-    const keep = s.keep || 0, archive = s.archive || 0, review = s.review || 0, del = s.delete || 0;
     destroyChart('actions');
     charts.actions = new Chart(document.getElementById('chart-actions'), {
       type: 'doughnut',
@@ -1335,7 +1352,6 @@ Rules for the JSON:
       </div>`).join('');
 
     // ── Flagged files table ───────────────────────────────────────────────────
-    lastAIActions = aiData.actions || [];
     activeActionFilter = null;
     renderActionsTable(lastAIActions, null);
   }
