@@ -37,7 +37,7 @@ The app detects its environment at runtime:
 
 ---
 
-## Current feature set (v1.8.4)
+## Current feature set (v1.8.5)
 
 - Google Drive recursive folder scan with subfolder path tracking (UI-labeled "FileFolder")
 - SharePoint Excel export import (`.xlsx` / `.xls`) — client-side parsing with SheetJS
@@ -55,6 +55,7 @@ The app detects its environment at runtime:
 
 - **Action Totals drill-down** (v1.8.3): each row in the dashboard's "Action Totals" (Keep/Review/Archive/Delete) is clickable — filters the Flagged Files table below to just that action, retitles it with a count, and can be cleared via "Show all". Pure front-end filter over the existing `aiData.actions` list; no prompt or backend changes.
 - **Action count fix** (v1.8.4): Action Totals / donut counts are now computed client-side from `aiData.actions` (grouped by label) plus `files.length - actions.length` for Keep, instead of trusting the AI's self-reported `stats` block. Root cause: on larger file sets the AI's own aggregate `stats` numbers drifted from its own `actions` list and didn't sum to the true file count (e.g. one real run: `stats` said Delete 20/Review 12 while only 6+6 files were actually tagged, summing to 32 instead of 107 total files). The model can't reliably self-tally counts across dozens of items — counts are now derived deterministically from data already in the response.
+- **Pre-computed duplicate clusters** (v1.8.5): before calling the AI, `detectCandidateClusters()` groups files client-side by folder + file type + modified calendar day, flags sub-groups sharing a byte-identical timestamp as near-certain duplicates, and computes oldest/newest per cluster. This block is appended to the prompt so the AI judges pre-built candidates instead of pattern-matching cold across the raw file list. Root cause found via manual audit of a real 107-file run: the AI missed an exact-timestamp duplicate trio entirely, returned an incomplete 7/9 file duplicate group, left 11 of 12 files in an obvious same-day screenshot cluster unassessed, and called the *newest* file in a 7-file build cluster "outdated" (the actual oldest was never mentioned) — LLMs are unreliable at this kind of cross-item comparison/date-sorting done silently over dozens of rows. The default prompt (`index.html`'s embedded `#user-prompt` textarea) was rewritten to consume these clusters as ground truth, and the JSON contract dropped the unreliable self-reported `stats` field entirely (now redundant given v1.8.4) and added a `reason` field to `duplicate_groups`.
 
 **Note on rebrand (v1.8.2):** "OpenAI" → "EngineAI" and "Google Drive" → "FileFolder" is a **UI-text-only** rebrand — 20 visible strings changed (header, badges, labels, alerts, status/error messages). Code internals (variable names, API URLs, localStorage keys, JS comments, `setKeys()` hints) are untouched and still reference OpenAI/Drive under the hood.
 

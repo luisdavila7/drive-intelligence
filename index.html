@@ -672,7 +672,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
       Compare Files
     </button>
-    <span class="header-badge">v1.8.4</span>
+    <span class="header-badge">v1.8.5</span>
   </div>
 </header>
 
@@ -850,16 +850,19 @@
         <div style="margin-top:.6rem">
           <textarea id="user-prompt" oninput="markPromptCustomized()">Analyze the metadata of the following files from a shared folder and identify duplicates, outdated files, and cleanup opportunities.
 
+You are given two pre-computed inputs below — treat them as ground truth, do not re-derive them yourself:
+1. "Pre-computed candidate clusters" — files already grouped by folder + file type + modified date, with the oldest and newest file in each group already identified for you. These are the ONLY groups you may treat as duplicate/near-duplicate candidates — do not scan the raw file list for other duplicates yourself; comparing dozens of files by eye is exactly where mistakes happen. A sub-note "EXACT same modified timestamp" inside a cluster means those specific files are near-certain duplicates, not just same-day.
+2. Per-file metadata tags — a file already marked "[OLDER THAN 1 YEAR]" is outdated by definition; do not judge age from the date text yourself.
+
 Respond in EXACTLY this format — two sections, no other text outside them:
 
 [ANALYSIS]
-Write a clear summary (3-5 paragraphs) covering: key patterns found, duplicate groups, most outdated files, largest contributors to clutter, and overall health of the folder. Mention specific file names.
+Write a clear summary (3-5 paragraphs) covering: key patterns found, each duplicate cluster and which file it recommends keeping, the files tagged [OLDER THAN 1 YEAR], largest contributors to clutter, and overall health of the folder. Mention specific file names.
 
 [JSON]
 {
-  "stats": { "keep": 0, "archive": 0, "review": 0, "delete": 0 },
   "duplicate_groups": [
-    { "group": "short group name", "files": ["file1", "file2"], "keep": "file to keep" }
+    { "group": "short group name", "files": ["file1", "file2"], "keep": "file to keep", "reason": "one sentence" }
   ],
   "actions": [
     { "file": "exact filename", "action": "Keep", "reason": "one sentence" }
@@ -867,10 +870,11 @@ Write a clear summary (3-5 paragraphs) covering: key patterns found, duplicate g
 }
 
 Rules for the JSON:
+- "duplicate_groups" must come only from the candidate clusters given above — one entry per cluster you confirm is a real duplicate/near-duplicate (skip a cluster if it's clearly not, e.g. a sequence of different screenshots)
+- "keep" defaults to the newest file in that cluster (already given) unless you have a clear reason to keep a different one — explain why in "reason"
 - "action" must be exactly one of: Keep, Archive, Review, Delete
-- In "actions", only include files you are flagging — skip files that are clearly fine
-- "stats" totals must reflect your assessment of ALL files in the list
-- "duplicate_groups" only for confirmed duplicates or near-duplicate versions</textarea>
+- In "actions" include: every non-kept file from a duplicate_groups entry, every file tagged [OLDER THAN 1 YEAR], and any other file you judge worth flagging — skip files that are clearly fine
+- Keep "duplicate_groups" and "actions" consistent with each other — a file marked for deletion in one must not be missing from the other</textarea>
           <p class="input-hint" style="margin-top:5px">Edit this prompt to change what the AI looks for.</p>
         </div>
       </div>
@@ -1056,7 +1060,7 @@ Rules for the JSON:
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.8.4 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.8.5 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -1679,6 +1683,62 @@ Rules for the JSON:
     return (Date.now() - new Date(modified)) > 365 * 24 * 60 * 60 * 1000;
   }
 
+  // ─── Candidate duplicate-cluster detection ─────────────────────────────────
+  // Groups files by folder + file type + calendar day of modification.
+  // This is the same "duplicate/near-duplicate" pattern-matching the AI was
+  // being asked to do cold across the whole file list — computed deterministically
+  // here instead, since date comparison and grouping across dozens of files is
+  // exactly where an LLM loses accuracy (misses clusters, mis-sorts oldest/newest).
+  // The AI is then only asked to judge these pre-built candidates, not find them.
+  function detectCandidateClusters(fileList) {
+    const groups = {};
+    fileList.forEach(f => {
+      if (!f.modifiedTime) return; // nothing to cluster on without a date
+      const ext = (f.name.split('.').pop() || '').toLowerCase();
+      const day = f.modifiedTime.slice(0, 10);
+      const key = `${f.folderPath || '(root)'}|${ext}|${day}`;
+      (groups[key] = groups[key] || []).push(f);
+    });
+
+    return Object.values(groups)
+      .filter(group => group.length >= 2)
+      .map(group => {
+        const sorted = [...group].sort((a, b) => new Date(a.modifiedTime) - new Date(b.modifiedTime));
+
+        // Sub-groups within this cluster that share a byte-identical timestamp —
+        // the strongest possible duplicate signal available from metadata alone.
+        const byExactTime = {};
+        group.forEach(f => (byExactTime[f.modifiedTime] = byExactTime[f.modifiedTime] || []).push(f.name));
+        const exactMatches = Object.values(byExactTime).filter(names => names.length >= 2);
+
+        return {
+          folder: group[0].folderPath || '(root)',
+          files: sorted.map(f => f.name),
+          oldest: sorted[0].name,
+          newest: sorted[sorted.length - 1].name,
+          exactMatches
+        };
+      });
+  }
+
+  // Renders detected clusters as a text block to append to the AI prompt.
+  function formatClustersForPrompt(clusters) {
+    if (!clusters.length) return '';
+    const lines = clusters.map((c, i) => {
+      const exactLines = c.exactMatches
+        .map(names => `    - EXACT same modified timestamp (near-certain duplicates): ${names.join(', ')}`)
+        .join('\n');
+      return `Cluster ${i + 1} — folder "${c.folder}", same file type, same calendar day (${c.files.length} files):\n` +
+        `  Files: ${c.files.join(', ')}\n` +
+        `  Oldest: ${c.oldest}  |  Newest: ${c.newest}` +
+        (exactLines ? `\n${exactLines}` : '');
+    }).join('\n\n');
+    return `\n\nPre-computed candidate clusters (grouped by folder + file type + modified date — ` +
+      `these are the ONLY groups you should treat as duplicate/near-duplicate candidates; ` +
+      `do not search for or invent other duplicate groups, and do not re-derive which file is ` +
+      `oldest/newest within a cluster — it is already given above):\n${lines}`;
+  }
+
   function setPipeline(active, errorStep) {
     for (let i = 1; i <= 5; i++) {
       const el = document.getElementById('pip-' + i);
@@ -1893,6 +1953,9 @@ Rules for the JSON:
       ? `\n\n⚠ Note: Due to the AI token limit, only the first ${AI_HARD_LIMIT} of ${files.length.toLocaleString()} total files are included below. Keep this in mind when summarising coverage.`
       : '';
 
+    // Pre-computed duplicate/near-duplicate candidates — see detectCandidateClusters().
+    const clusterText = formatClustersForPrompt(detectCandidateClusters(filesToAnalyze));
+
     try {
       // On Vercel: call the secure proxy (key is server-side, never in the browser).
       // On GitHub Pages: call OpenAI directly with the localStorage key.
@@ -1907,7 +1970,7 @@ Rules for the JSON:
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           max_tokens: 2500,
-          messages: [{ role: 'user', content: `${prompt}${truncationNote}\n\nFile metadata:\n${metaText}` }]
+          messages: [{ role: 'user', content: `${prompt}${truncationNote}${clusterText}\n\nFile metadata:\n${metaText}` }]
         })
       });
 
