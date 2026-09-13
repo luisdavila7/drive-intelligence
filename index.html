@@ -312,12 +312,23 @@
     }
     .action-summary-row {
       display: flex; align-items: center; justify-content: space-between;
-      padding: .35rem 0; border-bottom: 1px solid var(--gray-100);
+      padding: .35rem .4rem; border-bottom: 1px solid var(--gray-100);
+      cursor: pointer; border-radius: 4px; margin: 0 -.4rem;
+      transition: background-color .12s ease;
     }
     .action-summary-row:last-child { border-bottom: none; }
+    .action-summary-row:hover { background: var(--gray-100); }
+    .action-summary-row.active { background: var(--gray-100); box-shadow: inset 3px 0 0 var(--row-color, var(--gray-600)); }
     .action-summary-label { font-size: 12px; color: var(--gray-800); }
     .action-summary-count { font-size: 16px; font-weight: 600; }
+    .action-summary-hint { font-size: 10px; color: var(--gray-400); margin-top: .4rem; }
     .actions-table-wrap { max-height: 280px; overflow-y: auto; border-radius: 4px; border: 1px solid var(--gray-200); }
+    .actions-table-title-row { display: flex; align-items: baseline; gap: .5rem; margin-bottom: .5rem; }
+    .actions-clear-filter {
+      font-size: 11px; color: var(--blue-mid); cursor: pointer; font-weight: 500;
+      text-transform: none; letter-spacing: 0;
+    }
+    .actions-clear-filter:hover { text-decoration: underline; }
     @media (max-width: 900px) {
       .dashboard-grid, .dash-ai-grid { grid-template-columns: 1fr; }
     }
@@ -661,7 +672,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
       Compare Files
     </button>
-    <span class="header-badge">v1.8.2</span>
+    <span class="header-badge">v1.8.3</span>
   </div>
 </header>
 
@@ -1005,11 +1016,15 @@ Rules for the JSON:
           <div class="dash-chart-wrap">
             <div class="dash-chart-label">Action Totals</div>
             <div id="action-summary" style="padding-top:.25rem"></div>
+            <div class="action-summary-hint">Click a row to see those files below</div>
           </div>
         </div>
         <!-- Flagged files table -->
         <div>
-          <div class="dash-chart-label" style="margin-bottom:.5rem">Flagged Files — AI Recommendations</div>
+          <div class="actions-table-title-row">
+            <div class="dash-chart-label" id="actions-table-title" style="margin-bottom:0">Flagged Files — AI Recommendations</div>
+            <span id="actions-clear-filter" class="actions-clear-filter hidden" onclick="filterActionsByLabel(null)">Show all</span>
+          </div>
           <div class="actions-table-wrap">
             <table>
               <thead><tr><th>File</th><th>Action</th><th>Reason</th></tr></thead>
@@ -1041,13 +1056,15 @@ Rules for the JSON:
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.8.2 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.8.3 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
   let files = [];
   let fullPayload = {};
   let charts = {};   // Chart.js instances — stored so we can destroy before rebuilding
+  let lastAIActions = [];     // full per-file action list from the last AI report
+  let activeActionFilter = null; // 'Keep' | 'Review' | 'Archive' | 'Delete' | null (= show all)
 
   // ─── Chart helpers ──────────────────────────────────────────────────────────
   function destroyChart(key) {
@@ -1304,7 +1321,7 @@ Rules for the JSON:
     document.getElementById('dup-groups-count').textContent = groups.length;
     document.getElementById('dup-files-count').textContent = dupFiles;
 
-    // ── Action totals summary ─────────────────────────────────────────────────
+    // ── Action totals summary (each row is clickable — filters the table below) ─
     const summaryItems = [
       { label: 'Keep',    count: keep,    color: '#34A853' },
       { label: 'Review',  count: review,  color: '#FBBC04' },
@@ -1312,23 +1329,54 @@ Rules for the JSON:
       { label: 'Delete',  count: del,     color: '#3C4043' }
     ];
     document.getElementById('action-summary').innerHTML = summaryItems.map(item => `
-      <div class="action-summary-row">
+      <div class="action-summary-row" data-action="${item.label}" style="--row-color:${item.color}" onclick="filterActionsByLabel('${item.label}')">
         <span class="action-summary-label">${item.label}</span>
         <span class="action-summary-count" style="color:${item.color}">${item.count}</span>
       </div>`).join('');
 
     // ── Flagged files table ───────────────────────────────────────────────────
-    const actions = aiData.actions || [];
-    const ACTION_BADGE = { Keep: 'badge-green', Archive: 'badge-yellow', Review: 'badge-blue', Delete: 'badge-red' };
-    const ACTION_ORDER = { Delete: 0, Archive: 1, Review: 2, Keep: 3 };
-    const sorted = [...actions].sort((a, b) => (ACTION_ORDER[a.action] ?? 4) - (ACTION_ORDER[b.action] ?? 4));
-    document.getElementById('actions-tbody').innerHTML = sorted.length
-      ? sorted.map(a => `<tr>
+    lastAIActions = aiData.actions || [];
+    activeActionFilter = null;
+    renderActionsTable(lastAIActions, null);
+  }
+
+  const ACTION_BADGE = { Keep: 'badge-green', Archive: 'badge-yellow', Review: 'badge-blue', Delete: 'badge-red' };
+  const ACTION_ORDER = { Delete: 0, Archive: 1, Review: 2, Keep: 3 };
+
+  // Renders the Flagged Files table. `filterLabel` narrows to one action (or null for all).
+  function renderActionsTable(list, filterLabel) {
+    const rows = (filterLabel ? list.filter(a => a.action === filterLabel) : list)
+      .slice()
+      .sort((a, b) => (ACTION_ORDER[a.action] ?? 4) - (ACTION_ORDER[b.action] ?? 4));
+
+    document.getElementById('actions-tbody').innerHTML = rows.length
+      ? rows.map(a => `<tr>
           <td class="td-name" title="${a.file}">${a.file}</td>
           <td><span class="badge ${ACTION_BADGE[a.action] || 'badge-gray'}">${a.action || '—'}</span></td>
           <td style="font-size:12px;color:var(--gray-600)">${a.reason || '—'}</td>
         </tr>`).join('')
-      : `<tr><td colspan="3" style="text-align:center;color:var(--gray-600);padding:1rem">No specific files flagged by AI.</td></tr>`;
+      : `<tr><td colspan="3" style="text-align:center;color:var(--gray-600);padding:1rem">${filterLabel ? `No files flagged as "${filterLabel}".` : 'No specific files flagged by AI.'}</td></tr>`;
+
+    const title = document.getElementById('actions-table-title');
+    const clearBtn = document.getElementById('actions-clear-filter');
+    if (title) title.textContent = filterLabel
+      ? `Flagged Files — ${filterLabel} (${rows.length})`
+      : 'Flagged Files — AI Recommendations';
+    if (clearBtn) clearBtn.classList.toggle('hidden', !filterLabel);
+
+    document.querySelectorAll('.action-summary-row').forEach(row => {
+      row.classList.toggle('active', row.dataset.action === filterLabel);
+    });
+  }
+
+  // Called by clicking an Action Totals row, or "Show all" to clear the filter.
+  function filterActionsByLabel(label) {
+    activeActionFilter = (activeActionFilter === label) ? null : label; // clicking the active row again clears it
+    renderActionsTable(lastAIActions, activeActionFilter);
+    if (activeActionFilter) {
+      document.getElementById('actions-tbody').closest('.actions-table-wrap')
+        .scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 
   // Legacy fallback — called when the AI response has no [JSON] block.
@@ -1995,6 +2043,10 @@ Rules for the JSON:
     document.getElementById('dup-groups-count').textContent = '—';
     document.getElementById('dup-files-count').textContent = '—';
     document.getElementById('action-summary').innerHTML = '';
+    document.getElementById('actions-table-title').textContent = 'Flagged Files — AI Recommendations';
+    document.getElementById('actions-clear-filter').classList.add('hidden');
+    lastAIActions = [];
+    activeActionFilter = null;
     show('empty-state');
     setAnalyzeStatus('', '');
     setPipeline(1);

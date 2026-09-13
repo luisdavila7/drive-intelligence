@@ -37,17 +37,25 @@ The app detects its environment at runtime:
 
 ---
 
-## Current feature set (v1.5.0)
+## Current feature set (v1.8.3)
 
-- Google Drive recursive folder scan with subfolder path tracking
+- Google Drive recursive folder scan with subfolder path tracking (UI-labeled "FileFolder")
 - SharePoint Excel export import (`.xlsx` / `.xls`) — client-side parsing with SheetJS
-- AI analysis via OpenAI `gpt-4o-mini` with editable prompt
+- AI analysis via OpenAI `gpt-4o-mini` (UI-labeled "EngineAI") with editable prompt
+- Collapsible prompt editor: textarea hidden by default, toggle row with Edit/Hide, "custom" badge when edited from default text (v1.8.1)
 - Metadata table: Name, Folder, Type, Size, Last Modified, Author, Signals
 - Version signals and +1yr age detection
 - Markdown rendering of AI output
 - JSON download (metadata + full report)
 - AI token-limit warning banner (yellow >500 files, red >1200 files)
 - Auto-truncation at 1200 files to avoid token-limit API errors
+- **Dashboard v2** (v1.7.0): metadata charts (storage by file type, files created per month, files per folder — no AI needed) + structured AI dashboard (Action Breakdown donut, duplicate group stat tiles, action totals panel, Flagged Files table). AI prompt upgraded to `[ANALYSIS]+[JSON]` format with a parser that splits narrative from JSON; `max_tokens` raised to 2500; falls back to a keyword-count chart if AI returns free text only.
+- **File Comparison module** (v1.8.0): "Compare Files" slide-in panel; accepts PDF/DOCX (max 500 KB each); text extracted client-side with PDF.js / mammoth.js, capped at 4,000 chars/file; AI prompt returns RECOMMENDATION / DIFFERENCES / REASONING / VERDICT sections rendered as a styled result card; drag-and-drop + click-to-browse; reuses the existing `/api/analyze` proxy.
+- Robust error handling: all fetch error paths read the response as text first and only attempt `JSON.parse`, so non-JSON responses (e.g. Vercel "Forbidden." or rate-limit text) display instead of crashing.
+
+- **Action Totals drill-down** (v1.8.3): each row in the dashboard's "Action Totals" (Keep/Review/Archive/Delete) is clickable — filters the Flagged Files table below to just that action, retitles it with a count, and can be cleared via "Show all". Pure front-end filter over the existing `aiData.actions` list; no prompt or backend changes.
+
+**Note on rebrand (v1.8.2):** "OpenAI" → "EngineAI" and "Google Drive" → "FileFolder" is a **UI-text-only** rebrand — 20 visible strings changed (header, badges, labels, alerts, status/error messages). Code internals (variable names, API URLs, localStorage keys, JS comments, `setKeys()` hints) are untouched and still reference OpenAI/Drive under the hood.
 
 ---
 
