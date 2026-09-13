@@ -1,5 +1,9 @@
 # Project Context for Claude Code
 
+> **Status snapshot — 2026-09-13:** `main` @ `9f0b767`, deployed version **v1.8.5**. Pushed and
+> live on Vercel (auto-deploys from `main`); Luis tests via the Vercel preview since he can't run
+> the app locally. See "Pending tasks" near the bottom for what's still open.
+
 ## Who I am
 My name is Luis Davila (davila-luis1@aramark.ca). I'm building a proof of concept for an enterprise initiative called **Initiative 4: Enterprise Knowledge and SharePoint Cleanup Tool** at Aramark. The goal is to use AI to detect duplicate files, outdated documents, and naming chaos in our document libraries.
 
@@ -163,3 +167,24 @@ Go to Vercel dashboard → Project → Settings → Environment Variables → Ed
 2. **Claude writes its own prompts.** Claude builds its own internal prompts and reasoning based on the information Luis provides. Luis gives direction and context; Claude translates that into implementation decisions.
 
 3. **Language.** Luis writes in Spanish. Claude always responds in English — no exceptions.
+
+4. **Commit + push, don't wait for local testing.** Luis cannot run this app locally — he tests exclusively via the Vercel preview deploy. Once a change is approved and verified (JS parses cleanly, logic sanity-checked against real data when possible), commit and push to `main` directly so Vercel redeploys; don't leave changes uncommitted waiting for a local test that won't happen.
+
+5. **Version bump on every meaningful change.** Bump the patch version (header badge `.header-badge` + footer `.footer` in `index.html`, and the "Current feature set" heading here) on every feat/fix commit, per the global version-tracking rule.
+
+---
+
+## Recent session log (most recent first)
+
+- **2026-09-13 — v1.8.5, pre-computed duplicate clusters.** Luis shared a real AI analysis run (107-file synthetic SharePoint dataset, `SampleData.xlsx`) and flagged that only 32 of 107 files were reflected in the dashboard. Investigation found two separate AI-reliability bugs:
+  1. The AI's self-reported `stats` block didn't even match its own `actions` array, and didn't sum to the true file count → fixed in **v1.8.4** by deriving Keep/Review/Archive/Delete counts client-side from `aiData.actions` + `files.length` instead of trusting the AI's arithmetic.
+  2. A manual audit of the same 107-file run found the AI missed an exact-timestamp duplicate trio entirely, returned an incomplete duplicate group (7/9 files), left 11/12 files of an obvious same-day screenshot cluster unassessed, and called the *newest* file in a build cluster "outdated" → fixed in **v1.8.5** by adding `detectCandidateClusters()` (groups files by folder + type + modified day, flags identical-timestamp sub-groups, computes oldest/newest) and rewriting the default AI prompt to consume these as ground truth rather than discovering patterns cold. Verified against the real dataset before pushing.
+  - The `stats` field was dropped from the JSON contract entirely (redundant now that v1.8.4 computes it client-side).
+  - See [ai-response-reliability-pattern.md](../../.claude/projects/) memory (per-project, not in this repo) for the general principle established here: don't ask the AI to compute/discover anything the frontend can determine deterministically.
+- **2026-09-12 — v1.8.3, Action Totals drill-down.** Made each row in the dashboard's Action Totals clickable to filter the Flagged Files table by that action (pure front-end, no prompt changes). This is what surfaced the v1.8.4 bug — clicking "Review" showed fewer rows than the tile's count.
+- **2026-09-12 — bootstrap.** First session in this thread: created `.claude/settings.json` (project-level Bash-allow config, was missing) and refreshed this file's "Current feature set" section from a stale v1.5.0 to the actual v1.8.2, after confirming both bootstrap files' state.
+
+## Pending tasks
+
+- **Luis to verify v1.8.5 on the Vercel preview:** re-run the same 107-file SharePoint analysis and confirm (a) Action Totals + donut now sum to the true file count, (b) the narrative/`duplicate_groups` reflect the pre-computed clusters (the 9-file PNG cluster complete, the 3-file exact-timestamp trio caught, the 12-file screenshot cluster addressed as a whole rather than one arbitrary file).
+- No other code changes in flight as of this snapshot.
