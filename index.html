@@ -672,7 +672,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
       Compare Files
     </button>
-    <span class="header-badge">v1.8.7</span>
+    <span class="header-badge">v1.8.8</span>
   </div>
 </header>
 
@@ -1061,7 +1061,7 @@ Rules for the JSON:
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.8.7 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.8.8 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -1086,7 +1086,7 @@ Rules for the JSON:
     // ── 1. File Types (Donut) ────────────────────────────────────────────────
     const typeCounts = {};
     files.forEach(f => {
-      const t = mimeLabel(f.mimeType || '');
+      const t = mimeLabel(f.mimeType || '', f.name);
       typeCounts[t] = (typeCounts[t] || 0) + 1;
     });
     let typeEntries = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
@@ -1181,7 +1181,7 @@ Rules for the JSON:
     // ── 4. Storage by File Type (Horizontal Bar, MB) ─────────────────────────
     const typeStorage = {};
     files.forEach(f => {
-      const t = mimeLabel(f.mimeType || '');
+      const t = mimeLabel(f.mimeType || '', f.name);
       typeStorage[t] = (typeStorage[t] || 0) + (parseInt(f.size) || 0);
     });
     const MB = 1048576;
@@ -1666,7 +1666,11 @@ Rules for the JSON:
     return (b / 1048576).toFixed(1) + ' MB';
   }
 
-  function mimeLabel(mime) {
+  // `name` is optional but should be passed whenever available — it's what lets
+  // us show the real extension (apk, xlsm, zip, ...) for files that fell back to
+  // the generic 'application/octet-stream' MIME type (see mimeMap in
+  // processSharePointFile()), instead of a meaningless truncated label.
+  function mimeLabel(mime, name) {
     const map = {
       'application/vnd.google-apps.folder': 'folder',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
@@ -1681,6 +1685,13 @@ Rules for the JSON:
       'image/jpeg': 'jpg',
     };
     if (map[mime]) return map[mime];
+    // Generic/unrecognized MIME type (e.g. octet-stream) — the file's own
+    // extension is a far more useful label than anything derived from the mime
+    // string itself, and is always correct since it's exactly what mimeMap
+    // failed to recognize in the first place.
+    if (mime === 'application/octet-stream' && name && name.includes('.')) {
+      return name.split('.').pop().toLowerCase().substring(0, 6);
+    }
     const parts = mime.split('/');
     return parts[parts.length - 1].split('.').pop().substring(0, 6);
   }
@@ -1928,7 +1939,7 @@ Rules for the JSON:
     const tbody = document.getElementById('meta-body');
     tbody.innerHTML = '';
     data.forEach(f => {
-      const type = mimeLabel(f.mimeType);
+      const type = mimeLabel(f.mimeType, f.name);
       const old = isOld(f.modifiedTime);
       const modified = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
       const author = f.owners?.[0]?.displayName || '—';
@@ -2012,7 +2023,7 @@ Rules for the JSON:
     const filesToAnalyze = truncated ? files.slice(0, AI_HARD_LIMIT) : files;
 
     const metaText = filesToAnalyze.map(f => {
-      const type = mimeLabel(f.mimeType);
+      const type = mimeLabel(f.mimeType, f.name);
       const size = sizeLabel(f.size);
       const modified = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('en-US') : 'unknown';
       const created  = f.createdTime  ? new Date(f.createdTime).toLocaleDateString('en-US')  : 'unknown';

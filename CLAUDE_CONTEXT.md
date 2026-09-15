@@ -1,6 +1,6 @@
 # Project Context for Claude Code
 
-> **Status snapshot — 2026-09-15:** `main`, deployed version **v1.8.7**. Pushed and
+> **Status snapshot — 2026-09-15:** `main`, deployed version **v1.8.8**. Pushed and
 > live on Vercel (auto-deploys from `main`); Luis tests via the Vercel preview since he can't run
 > the app locally. See "Pending tasks" near the bottom for what's still open.
 
@@ -41,7 +41,7 @@ The app detects its environment at runtime:
 
 ---
 
-## Current feature set (v1.8.7)
+## Current feature set (v1.8.8)
 
 - Google Drive recursive folder scan with subfolder path tracking (UI-labeled "FileFolder")
 - SharePoint Excel export import (`.xlsx` / `.xls`) — client-side parsing with SheetJS
@@ -65,6 +65,8 @@ The app detects its environment at runtime:
 - **SharePoint date parser fix** (v1.8.6): `processSharePointFile()`'s "Modified" column parser only recognized a native Excel date/time value or a `DD/MM/YYYY H:MM` text string. A real SharePoint export (`SampleData_Demo_1.xlsx`) stores "Modified" as **text** in `YYYY-MM-DD HH:MM:SS` format, which matched neither case — every row silently got `modifiedTime: null`, which in turn disabled `isOld()` age-tagging and `detectCandidateClusters()` entirely (both require a real date) for that whole run, forcing the AI to fall back to guessing rather than judging pre-computed ground truth. Parser now also matches the `YYYY-MM-DD HH:MM[:SS]` format. Verified against the real file: 0/192 rows parsed before the fix, 192/192 after, and cluster detection went from 0 to 19 real clusters (including two 46-file near-duplicate folder trees, `Categories` and `Categories_1`, invisible to the AI before).
 
 - **Cross-folder duplicate detection** (v1.8.7): `detectCandidateClusters()` only ever compares files *within the same folder*, so it could never catch the same file existing verbatim in a *different* folder — e.g. a whole folder tree copy-pasted elsewhere. Luis tested this directly by duplicating a real folder (`Categories` → `Categories_1`, 46 identically-named/identically-timestamped files) and confirmed the AI never mentioned it. Added `detectCrossFolderDuplicates()`: groups files by filename across the *entire* file list regardless of folder, keeps only names appearing in 2+ distinct folders, and rolls up any folder pair sharing 5+ identical names into one "likely a duplicated folder" finding (below that threshold, reported as individual cross-folder file pairs) rather than dozens of one-off entries. Fed to the prompt via `formatCrossFolderDuplicatesForPrompt()` as a third ground-truth block, and the default prompt/JSON-contract rules were updated to reference it alongside the existing same-folder clusters. Verified against Luis's real data: correctly surfaced the 46-file `Categories`/`Categories_1` overlap as one "likely a duplicated folder" finding (46/46 exact timestamp matches) and the pre-existing single-file `Meridian Menu Pricing.xlsx` cross-folder duplicate as a separate, non-rolled-up entry.
+
+- **"octet-" file-type label fix** (v1.8.8): Luis spotted a bogus "octet-" entry in the File Types donut/storage chart. Root cause: `processSharePointFile()` maps unrecognized extensions (`.apk`, `.xlsm`, `.zip`, etc. — anything not in its small `mimeMap`) to the generic `application/octet-stream` MIME type, and `mimeLabel()` had no explicit case for it — falling through to a generic parser that truncated `"octet-stream"` to `"octet-"`. Fixed at the root rather than by special-casing each extension: `mimeLabel()` now accepts an optional filename and, for `application/octet-stream`, derives the label from the file's own extension instead (so it correctly shows `apk`/`xlsm`/`zip`/whatever comes next, not just today's known offenders). All 4 call sites updated to pass `f.name`.
 
 **Note on rebrand (v1.8.2):** "OpenAI" → "EngineAI" and "Google Drive" → "FileFolder" is a **UI-text-only** rebrand — 20 visible strings changed (header, badges, labels, alerts, status/error messages). Code internals (variable names, API URLs, localStorage keys, JS comments, `setKeys()` hints) are untouched and still reference OpenAI/Drive under the hood.
 
@@ -181,6 +183,7 @@ Go to Vercel dashboard → Project → Settings → Environment Variables → Ed
 
 ## Recent session log (most recent first)
 
+- **2026-09-15 — v1.8.8, "octet-" file-type label fix.** Luis noticed a nonsensical "octet-" entry in the metadata File Types chart while reviewing the same test dataset. Root cause: files with extensions not covered by `processSharePointFile()`'s `mimeMap` (`.apk`, `.xlsm`, `.zip`) get the generic `application/octet-stream` MIME type, and `mimeLabel()` truncated that string itself down to "octet-" instead of showing anything useful. Fixed by having `mimeLabel()` fall back to the file's real extension (not the MIME string) whenever the MIME type is the generic `octet-stream` sentinel — a root-cause fix that covers any future unrecognized extension, not just today's three.
 - **2026-09-15 — v1.8.7, cross-folder duplicate detection.** After verifying v1.8.6 on the Vercel preview, Luis noticed the AI still didn't flag a folder he'd deliberately duplicated (`Categories` → `Categories_1`, 46 files, identical names and timestamps) as a duplicate. Root cause: `detectCandidateClusters()` only ever groups files within the *same* folder — it structurally cannot catch the same file existing in a *different* folder. Added a second, complementary detector (`detectCrossFolderDuplicates()`) that groups by filename across the whole list regardless of folder, and rolls up folder pairs sharing 5+ identical names into one "likely a duplicated folder" finding. Verified against Luis's real data before pushing: correctly identified the 46-file overlap as one finding (46/46 exact timestamp matches).
 - **2026-09-14 — v1.8.6, Keep drill-down + SharePoint date parser fix.** Luis reported that clicking "Keep" in Action Totals showed an empty Flagged Files table, and shared a real AI run (`SampleData_Demo_1.xlsx`, 192-file SharePoint export). Two bugs found and fixed:
   1. **Keep drill-down** — `aiData.actions` only ever contains flagged files (Review/Archive/Delete); Keep's tile count was correct arithmetic but had no real per-file records behind it, so filtering by "Keep" always returned zero rows. Fixed by synthesizing a Keep entry for every file not present in `aiData.actions`.
@@ -196,5 +199,5 @@ Go to Vercel dashboard → Project → Settings → Environment Variables → Ed
 
 ## Pending tasks
 
-- **Luis to verify v1.8.7 on the Vercel preview:** re-run `SampleData_Demo_1.xlsx` and confirm the AI's narrative/`duplicate_groups` now explicitly call out `Categories`/`Categories_1` as a duplicated folder.
+- **Luis to verify v1.8.8 on the Vercel preview:** re-run `SampleData_Demo_1.xlsx` and confirm (a) the AI's narrative/`duplicate_groups` now explicitly call out `Categories`/`Categories_1` as a duplicated folder (v1.8.7), (b) the File Types chart no longer shows "octet-" and instead shows `apk`/`xlsm`/`zip` (v1.8.8).
 - No other code changes in flight as of this snapshot.
