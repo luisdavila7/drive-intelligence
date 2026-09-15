@@ -1,6 +1,6 @@
 # Project Context for Claude Code
 
-> **Status snapshot — 2026-09-15:** `main`, deployed version **v1.8.9**. Pushed and
+> **Status snapshot — 2026-09-15:** `main`, deployed version **v1.8.10**. Pushed and
 > live on Vercel (auto-deploys from `main`); Luis tests via the Vercel preview since he can't run
 > the app locally. See "Pending tasks" near the bottom for what's still open.
 
@@ -41,7 +41,7 @@ The app detects its environment at runtime:
 
 ---
 
-## Current feature set (v1.8.9)
+## Current feature set (v1.8.10)
 
 - Google Drive recursive folder scan with subfolder path tracking (UI-labeled "FileFolder")
 - SharePoint Excel export import (`.xlsx` / `.xls`) — client-side parsing with SheetJS
@@ -71,6 +71,8 @@ The app detects its environment at runtime:
 - **Duplicated-folder reconciliation + Archive rule + donut cap raise** (v1.8.9): Luis ran the real `Categories`/`Categories_1` test (from v1.8.7) and found the dashboard still only showed 8 of 46 files as Delete. Root cause: `formatCrossFolderDuplicatesForPrompt()`'s prompt text truncates large clusters to an 8-file sample + a literal `"+N more"` note (for token efficiency) — the AI copied that truncation note verbatim into its `duplicate_groups.files` JSON array as if it were a real filename, and correspondingly only wrote 8 `Delete` actions instead of all 46. Fixed by no longer trusting the AI to enumerate large clusters at all: `updateDashboardAI()` now recomputes `detectCrossFolderDuplicates()` itself, and for any cluster at/above `FOLDER_DUP_THRESHOLD` (5), synthesizes the `duplicate_groups` entry and a `Delete` action per file directly from that deterministic data — overriding whatever the AI wrote for those specific files (same reliability pattern as v1.8.4/v1.8.5). The exported JSON (`fullPayload.ai_structured`) now reflects this reconciled data too, not the AI's raw response, so the download always matches the dashboard. Verified: 46/46 duplicate files now correctly flagged Delete.
   - **New business rule:** any file tagged `[OLDER THAN 1 YEAR]` is now force-set to `Archive` action client-side (`isOld()`-driven), overriding whatever the AI picked — unless the same file is already being deleted as a literal duplicate, in which case Delete wins. Default prompt's JSON rules updated to state this convention too, so the AI's own narrative stays consistent with the enforced action.
   - **File Types donut cap raised 7 → 10** slices: after the v1.8.8 mimeLabel fix started surfacing real extensions (`apk`/`xlsm`/`zip`) instead of the generic "octet-" label, a typical SharePoint export easily has 8-9 real distinct types — the old 7-slice cap was rolling normal, useful categories into an "Other" bucket that looked like a leftover bug. 10 keeps "Other" reserved for genuinely long tails.
+
+- **FileFolder URL placeholder de-branding** (v1.8.10): the "FileFolder URL" input's placeholder still literally read `https://drive.google.com/drive/folders/...`, and its button said "Fetch files from Drive" — both directly named Google Drive despite the v1.8.2 rebrand covering visible labels elsewhere. Changed to a generic `https://your-shared-folder-link/folders/...` placeholder and "Fetch files" button text. Note: this input is functionally Drive-only (`fetchMetadata()`'s URL parser only matches Drive folder links) — SharePoint ingestion is the separate Excel-upload section — so the placeholder was deliberately kept generic rather than swapped to a SharePoint example, which would have been misleading.
 
 **Note on rebrand (v1.8.2):** "OpenAI" → "EngineAI" and "Google Drive" → "FileFolder" is a **UI-text-only** rebrand — 20 visible strings changed (header, badges, labels, alerts, status/error messages). Code internals (variable names, API URLs, localStorage keys, JS comments, `setKeys()` hints) are untouched and still reference OpenAI/Drive under the hood.
 
@@ -187,6 +189,7 @@ Go to Vercel dashboard → Project → Settings → Environment Variables → Ed
 
 ## Recent session log (most recent first)
 
+- **2026-09-15 — v1.8.10, FileFolder URL placeholder de-branding.** Luis noticed the "FileFolder URL" input's placeholder still literally showed `drive.google.com`. Flagged that this field is functionally Drive-only (SharePoint uses the separate Excel-upload section), so a "SharePoint folder" placeholder would have been misleading — went generic instead (`https://your-shared-folder-link/folders/...`), and updated the "Fetch files from Drive" button to just "Fetch files" for the same reason.
 - **2026-09-15 — v1.8.9, duplicated-folder reconciliation + Archive rule + donut cap.** Luis re-ran `SampleData_Demo_1.xlsx` after v1.8.7/v1.8.8 and reported two things: (1) the dashboard still only flagged 8 of the 46 `Categories`/`Categories_1` duplicate files for deletion, even though the AI's own narrative correctly identified the whole folder as duplicated; (2) a bogus-looking "Other" slice in the File Types donut. Root cause of (1): the AI copied our prompt's own `"+38 more"` truncation note into its JSON `duplicate_groups.files` array as if it were a filename, and only wrote 8 real `Delete` actions. Fixed by having `updateDashboardAI()` recompute `detectCrossFolderDuplicates()` itself and synthesize the full duplicate_groups entry + all 46 `Delete` actions deterministically for any cluster at/above the "duplicated folder" threshold, overriding the AI's incomplete version — verified 46/46 now flagged. (2) turned out to be the donut's intentional 7-slice cap, not a bug — raised to 10 since v1.8.8 now surfaces more real (and useful) distinct types. Also added a new business rule at Luis's request: files older than 1 year are now force-set to `Archive` client-side rather than left to the AI's inconsistent judgment.
 - **2026-09-15 — v1.8.8, "octet-" file-type label fix.** Luis noticed a nonsensical "octet-" entry in the metadata File Types chart while reviewing the same test dataset. Root cause: files with extensions not covered by `processSharePointFile()`'s `mimeMap` (`.apk`, `.xlsm`, `.zip`) get the generic `application/octet-stream` MIME type, and `mimeLabel()` truncated that string itself down to "octet-" instead of showing anything useful. Fixed by having `mimeLabel()` fall back to the file's real extension (not the MIME string) whenever the MIME type is the generic `octet-stream` sentinel — a root-cause fix that covers any future unrecognized extension, not just today's three.
 - **2026-09-15 — v1.8.7, cross-folder duplicate detection.** After verifying v1.8.6 on the Vercel preview, Luis noticed the AI still didn't flag a folder he'd deliberately duplicated (`Categories` → `Categories_1`, 46 files, identical names and timestamps) as a duplicate. Root cause: `detectCandidateClusters()` only ever groups files within the *same* folder — it structurally cannot catch the same file existing in a *different* folder. Added a second, complementary detector (`detectCrossFolderDuplicates()`) that groups by filename across the whole list regardless of folder, and rolls up folder pairs sharing 5+ identical names into one "likely a duplicated folder" finding. Verified against Luis's real data before pushing: correctly identified the 46-file overlap as one finding (46/46 exact timestamp matches).
@@ -204,5 +207,6 @@ Go to Vercel dashboard → Project → Settings → Environment Variables → Ed
 
 ## Pending tasks
 
-- **Luis to verify v1.8.9 on the Vercel preview:** re-run `SampleData_Demo_1.xlsx` and confirm (a) all 46 `Categories`/`Categories_1` files now show as Delete in the Flagged Files table (not just 8), (b) the dup-groups/dup-files stat tiles reflect this, (c) any file older than 1 year shows action Archive, (d) the File Types donut only shows "Other" for genuinely long-tail types now.
+- **Luis to verify v1.8.10 on the Vercel preview:** confirm the FileFolder URL input no longer shows "drive.google.com" and the button reads "Fetch files".
+- v1.8.9 verification (46/46 duplicate files as Delete, Archive rule, donut cap) still pending confirmation from Luis as of this snapshot.
 - No other code changes in flight as of this snapshot.
