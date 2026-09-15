@@ -672,7 +672,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
       Compare Files
     </button>
-    <span class="header-badge">v1.8.8</span>
+    <span class="header-badge">v1.8.9</span>
   </div>
 </header>
 
@@ -853,7 +853,7 @@
 You are given three pre-computed inputs below — treat them as ground truth, do not re-derive them yourself:
 1. "Pre-computed candidate clusters" — files already grouped by folder + file type + modified date, with the oldest and newest file in each group already identified for you. These are the ONLY same-folder groups you may treat as duplicate/near-duplicate candidates — do not scan the raw file list for other duplicates yourself; comparing dozens of files by eye is exactly where mistakes happen. A sub-note "EXACT same modified timestamp" inside a cluster means those specific files are near-certain duplicates, not just same-day.
 2. "Pre-computed cross-folder duplicate candidates" — filenames that appear in more than one folder. These are the ONLY cross-folder duplicates you may treat as candidates. A group labeled "likely a duplicated folder" with a high shared-file count means one folder is very likely a copy of the other — treat the whole group as one duplicate finding, not dozens of separate ones.
-3. Per-file metadata tags — a file already marked "[OLDER THAN 1 YEAR]" is outdated by definition; do not judge age from the date text yourself.
+3. Per-file metadata tags — a file already marked "[OLDER THAN 1 YEAR]" is outdated by definition; do not judge age from the date text yourself. Its action must be "Archive" unless it is also part of a duplicate_groups entry being deleted, in which case Delete takes precedence.
 
 Respond in EXACTLY this format — two sections, no other text outside them:
 
@@ -871,7 +871,7 @@ Write a clear summary (3-5 paragraphs) covering: key patterns found, each duplic
 }
 
 Rules for the JSON:
-- "duplicate_groups" must come only from the candidate clusters or cross-folder duplicate candidates given above — one entry per group you confirm is a real duplicate/near-duplicate (skip a group if it's clearly not, e.g. a sequence of different screenshots). A "likely a duplicated folder" cross-folder group should become one duplicate_groups entry covering the whole folder, not one per file.
+- "duplicate_groups" must come only from the candidate clusters or cross-folder duplicate candidates given above — one entry per group you confirm is a real duplicate/near-duplicate (skip a group if it's clearly not, e.g. a sequence of different screenshots). A "likely a duplicated folder" cross-folder group should become one duplicate_groups entry covering the whole folder, not one per file. Its file list may be shown to you truncated with a "+N more" note — that note is a display truncation, NOT a filename; never copy it into your JSON.
 - "keep" defaults to the newest file in that cluster (already given) unless you have a clear reason to keep a different one — explain why in "reason"
 - "action" must be exactly one of: Keep, Archive, Review, Delete
 - In "actions" include: every non-kept file from a duplicate_groups entry, every file tagged [OLDER THAN 1 YEAR], and any other file you judge worth flagging — skip files that are clearly fine
@@ -1061,7 +1061,7 @@ Rules for the JSON:
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.8.8 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.8.9 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -1090,10 +1090,13 @@ Rules for the JSON:
       typeCounts[t] = (typeCounts[t] || 0) + 1;
     });
     let typeEntries = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
-    // Cap at 7 slices; everything else → "Other"
-    if (typeEntries.length > 7) {
-      const rest = typeEntries.slice(7).reduce((s, e) => s + e[1], 0);
-      typeEntries = typeEntries.slice(0, 7).concat([['Other', rest]]);
+    // Cap at 10 slices; everything else → "Other". Raised from 7 in v1.8.9
+    // once the v1.8.8 mimeLabel fix started surfacing real extensions
+    // (apk/xlsm/zip/...) that used to be hidden behind the generic "octet-"
+    // label — a typical SharePoint export easily has 8-9 real types.
+    if (typeEntries.length > 10) {
+      const rest = typeEntries.slice(10).reduce((s, e) => s + e[1], 0);
+      typeEntries = typeEntries.slice(0, 10).concat([['Other', rest]]);
     }
     destroyChart('types');
     charts.types = new Chart(document.getElementById('chart-types'), {
@@ -1297,19 +1300,80 @@ Rules for the JSON:
   function updateDashboardAI(aiData) {
     show('dashboard-ai');
 
+    // ── Duplicated-folder reconciliation — don't trust the AI to enumerate ────
+    // dozens of filenames in its JSON. In practice: our own prompt describes a
+    // "likely a duplicated folder" cluster with an 8-file sample + "+N more"
+    // (see formatCrossFolderDuplicatesForPrompt), and the AI has been observed
+    // copying that truncated preview text verbatim into duplicate_groups.files
+    // (literally including "+38 more" as if it were a filename) and writing
+    // only 8 Delete actions instead of all 46. We already know the true,
+    // complete file list client-side, so for any cluster at/above the
+    // "duplicated folder" threshold we synthesize the duplicate_groups entry
+    // and Delete actions ourselves and override whatever the AI wrote for
+    // those same files — same reliability pattern as the v1.8.4 action counts
+    // and v1.8.5 same-folder clusters.
+    const folderDupClusters = detectCrossFolderDuplicates(files)
+      .filter(g => g.files.length >= FOLDER_DUP_THRESHOLD);
+    const folderDupFileSet = new Set(folderDupClusters.flatMap(g => g.files));
+
+    const aiDuplicateGroups = (aiData.duplicate_groups || [])
+      .filter(dg => !(dg.files || []).some(f => folderDupFileSet.has(f)));
+    const aiActions = (aiData.actions || [])
+      .filter(a => !folderDupFileSet.has(a.file));
+
+    const syntheticGroups = folderDupClusters.map(g => ({
+      group: `Duplicated folder (${g.folders.slice(1).join(', ')} vs ${g.folders[0]})`,
+      files: g.files,
+      keep: `All files in "${g.folders[0]}"`,
+      reason: `${g.files.length} identically-named files also exist in ${g.folders[0]} ` +
+        `(${g.exactCount}/${g.files.length} with an exact timestamp match) — likely a duplicated folder tree.`
+    }));
+    const syntheticActions = folderDupClusters.flatMap(g =>
+      g.files.map(name => ({
+        file: name,
+        action: 'Delete',
+        reason: `Duplicate — identical file already exists in "${g.folders[0]}".`
+      }))
+    );
+
+    const duplicateGroups = aiDuplicateGroups.concat(syntheticGroups);
+    let flaggedActions = aiActions.concat(syntheticActions);
+
+    // ── Archive rule for files older than 1 year — enforced, not left to the
+    // AI's judgment (it drifted between Keep/Review/omitting them entirely
+    // run to run). Delete wins if the file is also a literal duplicate above
+    // (removing the duplicate is the stronger cleanup action); otherwise any
+    // file flagged [OLDER THAN 1 YEAR] gets forced to Archive.
+    const archiveCandidates = new Map(); // name -> file, deduped since a name can span folders
+    files.forEach(f => {
+      if (isOld(f.modifiedTime) && !folderDupFileSet.has(f.name) && !archiveCandidates.has(f.name)) {
+        archiveCandidates.set(f.name, f);
+      }
+    });
+    archiveCandidates.forEach((f, name) => {
+      const existing = flaggedActions.find(a => a.file === name);
+      if (existing) {
+        existing.action = 'Archive';
+        if (!/older than 1 year/i.test(existing.reason || '')) {
+          existing.reason = `[OLDER THAN 1 YEAR] — ${existing.reason || 'not modified in over a year.'}`;
+        }
+      } else {
+        flaggedActions.push({ file: name, action: 'Archive', reason: 'Not modified in over a year.' });
+      }
+    });
+
     // ── Action counts — computed here, NOT trusted from aiData.stats ──────────
     // The AI's self-reported "stats" block is redundant arithmetic the model has
     // to tally in its head across every file; in practice it drifts from the
     // actual per-file "actions" list it just wrote (and from the true file
     // count) — e.g. stats.delete=20 while only 6 files are actually tagged
     // Delete. We derive the four counts ourselves instead:
-    //   - Review / Archive / Delete = count of that label in aiData.actions
+    //   - Review / Archive / Delete = count of that label in flaggedActions
     //   - Keep = total files minus everything explicitly flagged (files the AI
     //     didn't call out are implicitly fine, per the prompt's own rule to
     //     "skip files that are clearly fine")
     // This guarantees the numbers always sum to the real file count and always
     // match what the Flagged Files table shows when filtered.
-    const flaggedActions = aiData.actions || [];
     const countOf = label => flaggedActions.filter(a => a.action === label).length;
     const review = countOf('Review');
     const archive = countOf('Archive');
@@ -1319,13 +1383,19 @@ Rules for the JSON:
     // The AI never emits "Keep" rows itself (the prompt tells it to skip files
     // that are clearly fine), so without this the Keep tile's count above is
     // real but has no backing file list — clicking it would show nothing.
-    // Synthesize one Keep entry per file the AI didn't flag, so the drill-down
-    // table and "Show all" reflect every file, not just the flagged ones.
+    // Synthesize one Keep entry per file not otherwise flagged, so the
+    // drill-down table and "Show all" reflect every file, not just the
+    // flagged ones.
     const flaggedNames = new Set(flaggedActions.map(a => a.file));
     const keepActions = files
       .filter(f => !flaggedNames.has(f.name))
       .map(f => ({ file: f.name, action: 'Keep', reason: 'No issues detected.' }));
     lastAIActions = flaggedActions.concat(keepActions);
+
+    // Reconciled view returned to the caller so the downloadable JSON
+    // (fullPayload.ai_structured) reflects what the dashboard actually shows,
+    // not the AI's raw/unreconciled response.
+    const reconciled = { duplicate_groups: duplicateGroups, actions: flaggedActions };
 
     // ── Action Breakdown Donut ────────────────────────────────────────────────
     destroyChart('actions');
@@ -1349,9 +1419,8 @@ Rules for the JSON:
     });
 
     // ── Duplicate stat tiles ──────────────────────────────────────────────────
-    const groups = aiData.duplicate_groups || [];
-    const dupFiles = groups.reduce((sum, g) => sum + (g.files?.length || 0), 0);
-    document.getElementById('dup-groups-count').textContent = groups.length;
+    const dupFiles = duplicateGroups.reduce((sum, g) => sum + (g.files?.length || 0), 0);
+    document.getElementById('dup-groups-count').textContent = duplicateGroups.length;
     document.getElementById('dup-files-count').textContent = dupFiles;
 
     // ── Action totals summary (each row is clickable — filters the table below) ─
@@ -1370,6 +1439,8 @@ Rules for the JSON:
     // ── Flagged files table ───────────────────────────────────────────────────
     activeActionFilter = null;
     renderActionsTable(lastAIActions, null);
+
+    return reconciled;
   }
 
   const ACTION_BADGE = { Keep: 'badge-green', Archive: 'badge-yellow', Review: 'badge-blue', Delete: 'badge-red' };
@@ -2085,7 +2156,11 @@ Rules for the JSON:
       }
 
       document.getElementById('analysis-out').innerHTML = renderMarkdown(narrativeText);
-      if (aiData) updateDashboardAI(aiData);
+      // updateDashboardAI() returns the reconciled duplicate_groups/actions
+      // (after duplicated-folder + Archive-rule enforcement) — store that in
+      // fullPayload rather than the AI's raw response, so the downloadable
+      // JSON matches what the dashboard actually displays.
+      if (aiData) aiData = updateDashboardAI(aiData) || aiData;
       else updateDashboardActions(raw); // fallback: keyword count if no JSON block
 
       fullPayload.prompt = prompt;
