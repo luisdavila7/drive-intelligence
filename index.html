@@ -672,7 +672,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
       Compare Files
     </button>
-    <span class="header-badge">v1.8.5</span>
+    <span class="header-badge">v1.8.6</span>
   </div>
 </header>
 
@@ -1060,7 +1060,7 @@ Rules for the JSON:
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.8.5 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.8.6 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -1308,12 +1308,23 @@ Rules for the JSON:
     //     "skip files that are clearly fine")
     // This guarantees the numbers always sum to the real file count and always
     // match what the Flagged Files table shows when filtered.
-    lastAIActions = aiData.actions || [];
-    const countOf = label => lastAIActions.filter(a => a.action === label).length;
+    const flaggedActions = aiData.actions || [];
+    const countOf = label => flaggedActions.filter(a => a.action === label).length;
     const review = countOf('Review');
     const archive = countOf('Archive');
     const del = countOf('Delete');
-    const keep = Math.max(0, files.length - lastAIActions.length);
+    const keep = Math.max(0, files.length - flaggedActions.length);
+
+    // The AI never emits "Keep" rows itself (the prompt tells it to skip files
+    // that are clearly fine), so without this the Keep tile's count above is
+    // real but has no backing file list — clicking it would show nothing.
+    // Synthesize one Keep entry per file the AI didn't flag, so the drill-down
+    // table and "Show all" reflect every file, not just the flagged ones.
+    const flaggedNames = new Set(flaggedActions.map(a => a.file));
+    const keepActions = files
+      .filter(f => !flaggedNames.has(f.name))
+      .map(f => ({ file: f.name, action: 'Keep', reason: 'No issues detected.' }));
+    lastAIActions = flaggedActions.concat(keepActions);
 
     // ── Action Breakdown Donut ────────────────────────────────────────────────
     destroyChart('actions');
@@ -1580,15 +1591,24 @@ Rules for the JSON:
             const path       = (r['Path']        || '').toString().trim();
             const modifiedBy = (r['Modified By'] || '').toString().trim();
 
-            // Parse date: SheetJS returns a JS Date when cellDates:true, fallback to string parse
+            // Parse date: SheetJS returns a JS Date when cellDates:true (numeric/date-typed
+            // cells only — SharePoint exports often store "Modified" as plain text instead,
+            // so we also fall back to a couple of common text formats seen in the wild).
             let modifiedTime = null;
             const modRaw = r['Modified'];
             if (modRaw instanceof Date) {
               modifiedTime = modRaw.toISOString();
             } else if (modRaw) {
-              // Handle DD/MM/YYYY H:MM string format
-              const m = modRaw.toString().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
-              if (m) modifiedTime = new Date(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}T${m[4].padStart(2,'0')}:${m[5]}:00`).toISOString();
+              const str = modRaw.toString().trim();
+              // "YYYY-MM-DD HH:MM[:SS]" (e.g. SharePoint "Modified" column exported as text)
+              const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+              // "DD/MM/YYYY H:MM"
+              const slash = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+              if (iso) {
+                modifiedTime = new Date(`${iso[1]}-${iso[2]}-${iso[3]}T${iso[4].padStart(2,'0')}:${iso[5]}:${iso[6] || '00'}`).toISOString();
+              } else if (slash) {
+                modifiedTime = new Date(`${slash[3]}-${slash[2].padStart(2,'0')}-${slash[1].padStart(2,'0')}T${slash[4].padStart(2,'0')}:${slash[5]}:00`).toISOString();
+              }
             }
 
             const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';

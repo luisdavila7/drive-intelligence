@@ -1,6 +1,6 @@
 # Project Context for Claude Code
 
-> **Status snapshot — 2026-09-13:** `main` @ `9f0b767`, deployed version **v1.8.5**. Pushed and
+> **Status snapshot — 2026-09-14:** `main`, deployed version **v1.8.6**. Pushed and
 > live on Vercel (auto-deploys from `main`); Luis tests via the Vercel preview since he can't run
 > the app locally. See "Pending tasks" near the bottom for what's still open.
 
@@ -41,7 +41,7 @@ The app detects its environment at runtime:
 
 ---
 
-## Current feature set (v1.8.5)
+## Current feature set (v1.8.6)
 
 - Google Drive recursive folder scan with subfolder path tracking (UI-labeled "FileFolder")
 - SharePoint Excel export import (`.xlsx` / `.xls`) — client-side parsing with SheetJS
@@ -60,6 +60,9 @@ The app detects its environment at runtime:
 - **Action Totals drill-down** (v1.8.3): each row in the dashboard's "Action Totals" (Keep/Review/Archive/Delete) is clickable — filters the Flagged Files table below to just that action, retitles it with a count, and can be cleared via "Show all". Pure front-end filter over the existing `aiData.actions` list; no prompt or backend changes.
 - **Action count fix** (v1.8.4): Action Totals / donut counts are now computed client-side from `aiData.actions` (grouped by label) plus `files.length - actions.length` for Keep, instead of trusting the AI's self-reported `stats` block. Root cause: on larger file sets the AI's own aggregate `stats` numbers drifted from its own `actions` list and didn't sum to the true file count (e.g. one real run: `stats` said Delete 20/Review 12 while only 6+6 files were actually tagged, summing to 32 instead of 107 total files). The model can't reliably self-tally counts across dozens of items — counts are now derived deterministically from data already in the response.
 - **Pre-computed duplicate clusters** (v1.8.5): before calling the AI, `detectCandidateClusters()` groups files client-side by folder + file type + modified calendar day, flags sub-groups sharing a byte-identical timestamp as near-certain duplicates, and computes oldest/newest per cluster. This block is appended to the prompt so the AI judges pre-built candidates instead of pattern-matching cold across the raw file list. Root cause found via manual audit of a real 107-file run: the AI missed an exact-timestamp duplicate trio entirely, returned an incomplete 7/9 file duplicate group, left 11 of 12 files in an obvious same-day screenshot cluster unassessed, and called the *newest* file in a 7-file build cluster "outdated" (the actual oldest was never mentioned) — LLMs are unreliable at this kind of cross-item comparison/date-sorting done silently over dozens of rows. The default prompt (`index.html`'s embedded `#user-prompt` textarea) was rewritten to consume these clusters as ground truth, and the JSON contract dropped the unreliable self-reported `stats` field entirely (now redundant given v1.8.4) and added a `reason` field to `duplicate_groups`.
+
+- **Keep drill-down fix** (v1.8.6): clicking the "Keep" row in Action Totals showed an empty table. Root cause: `aiData.actions` only ever contains files the AI explicitly flagged (Review/Archive/Delete) — the Keep tile's count was always correct arithmetic (`files.length - actions.length`) but had zero real file records behind it, since the AI never emits "Keep" rows itself. Fixed by synthesizing a `{ action: 'Keep', reason: 'No issues detected.' }` entry for every file not present in `aiData.actions`, so the drill-down and "Show all" now reflect every file, not just the flagged ones.
+- **SharePoint date parser fix** (v1.8.6): `processSharePointFile()`'s "Modified" column parser only recognized a native Excel date/time value or a `DD/MM/YYYY H:MM` text string. A real SharePoint export (`SampleData_Demo_1.xlsx`) stores "Modified" as **text** in `YYYY-MM-DD HH:MM:SS` format, which matched neither case — every row silently got `modifiedTime: null`, which in turn disabled `isOld()` age-tagging and `detectCandidateClusters()` entirely (both require a real date) for that whole run, forcing the AI to fall back to guessing rather than judging pre-computed ground truth. Parser now also matches the `YYYY-MM-DD HH:MM[:SS]` format. Verified against the real file: 0/192 rows parsed before the fix, 192/192 after, and cluster detection went from 0 to 19 real clusters (including two 46-file near-duplicate folder trees, `Categories` and `Categories_1`, invisible to the AI before).
 
 **Note on rebrand (v1.8.2):** "OpenAI" → "EngineAI" and "Google Drive" → "FileFolder" is a **UI-text-only** rebrand — 20 visible strings changed (header, badges, labels, alerts, status/error messages). Code internals (variable names, API URLs, localStorage keys, JS comments, `setKeys()` hints) are untouched and still reference OpenAI/Drive under the hood.
 
@@ -176,6 +179,10 @@ Go to Vercel dashboard → Project → Settings → Environment Variables → Ed
 
 ## Recent session log (most recent first)
 
+- **2026-09-14 — v1.8.6, Keep drill-down + SharePoint date parser fix.** Luis reported that clicking "Keep" in Action Totals showed an empty Flagged Files table, and shared a real AI run (`SampleData_Demo_1.xlsx`, 192-file SharePoint export). Two bugs found and fixed:
+  1. **Keep drill-down** — `aiData.actions` only ever contains flagged files (Review/Archive/Delete); Keep's tile count was correct arithmetic but had no real per-file records behind it, so filtering by "Keep" always returned zero rows. Fixed by synthesizing a Keep entry for every file not present in `aiData.actions`.
+  2. **SharePoint date parser** — cross-checking the shared JSON against the actual Excel (read directly by unzipping the `.xlsx` and inspecting `sharedStrings.xml`/`sheet1.xml`, since it couldn't be uploaded) showed every one of the 192 rows had `modifiedTime: null`. The "Modified" column is exported as **text** in `YYYY-MM-DD HH:MM:SS` format, which the parser didn't recognize (it only handled native Excel dates or `DD/MM/YYYY H:MM` text) — every row silently fell back to `null`, which disabled `isOld()` age-tagging and `detectCandidateClusters()` for that whole run (both require a real date), forcing the AI to guess instead of judging pre-computed ground truth (it hallucinated a duplicate group and "[OLDER THAN 1 YEAR]" reasons that were never in its actual prompt input). Fixed by extending the parser to also match `YYYY-MM-DD HH:MM[:SS]`. Verified: 0/192 → 192/192 dates parsed, cluster detection 0 → 19 clusters (found two 46-file near-duplicate folder trees, `Categories`/`Categories_1`, previously invisible to the AI).
+  - A "reload a previously-downloaded JSON report into the dashboard" feature was proposed but explicitly declined by Luis — not pursued.
 - **2026-09-13 — v1.8.5, pre-computed duplicate clusters.** Luis shared a real AI analysis run (107-file synthetic SharePoint dataset, `SampleData.xlsx`) and flagged that only 32 of 107 files were reflected in the dashboard. Investigation found two separate AI-reliability bugs:
   1. The AI's self-reported `stats` block didn't even match its own `actions` array, and didn't sum to the true file count → fixed in **v1.8.4** by deriving Keep/Review/Archive/Delete counts client-side from `aiData.actions` + `files.length` instead of trusting the AI's arithmetic.
   2. A manual audit of the same 107-file run found the AI missed an exact-timestamp duplicate trio entirely, returned an incomplete duplicate group (7/9 files), left 11/12 files of an obvious same-day screenshot cluster unassessed, and called the *newest* file in a build cluster "outdated" → fixed in **v1.8.5** by adding `detectCandidateClusters()` (groups files by folder + type + modified day, flags identical-timestamp sub-groups, computes oldest/newest) and rewriting the default AI prompt to consume these as ground truth rather than discovering patterns cold. Verified against the real dataset before pushing.
@@ -186,5 +193,5 @@ Go to Vercel dashboard → Project → Settings → Environment Variables → Ed
 
 ## Pending tasks
 
-- **Luis to verify v1.8.5 on the Vercel preview:** re-run the same 107-file SharePoint analysis and confirm (a) Action Totals + donut now sum to the true file count, (b) the narrative/`duplicate_groups` reflect the pre-computed clusters (the 9-file PNG cluster complete, the 3-file exact-timestamp trio caught, the 12-file screenshot cluster addressed as a whole rather than one arbitrary file).
+- **Luis to verify v1.8.6 on the Vercel preview:** re-run `SampleData_Demo_1.xlsx` and confirm (a) clicking "Keep" now lists files instead of showing empty, (b) the AI's narrative/`duplicate_groups` now reflect real dates — in particular the `Categories` / `Categories_1` folders (46 files each) should surface as a major duplicate-folder finding, which the previous run never mentioned.
 - No other code changes in flight as of this snapshot.
