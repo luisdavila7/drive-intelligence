@@ -672,7 +672,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
       Compare Files
     </button>
-    <span class="header-badge">v1.8.6</span>
+    <span class="header-badge">v1.8.7</span>
   </div>
 </header>
 
@@ -850,9 +850,10 @@
         <div style="margin-top:.6rem">
           <textarea id="user-prompt" oninput="markPromptCustomized()">Analyze the metadata of the following files from a shared folder and identify duplicates, outdated files, and cleanup opportunities.
 
-You are given two pre-computed inputs below — treat them as ground truth, do not re-derive them yourself:
-1. "Pre-computed candidate clusters" — files already grouped by folder + file type + modified date, with the oldest and newest file in each group already identified for you. These are the ONLY groups you may treat as duplicate/near-duplicate candidates — do not scan the raw file list for other duplicates yourself; comparing dozens of files by eye is exactly where mistakes happen. A sub-note "EXACT same modified timestamp" inside a cluster means those specific files are near-certain duplicates, not just same-day.
-2. Per-file metadata tags — a file already marked "[OLDER THAN 1 YEAR]" is outdated by definition; do not judge age from the date text yourself.
+You are given three pre-computed inputs below — treat them as ground truth, do not re-derive them yourself:
+1. "Pre-computed candidate clusters" — files already grouped by folder + file type + modified date, with the oldest and newest file in each group already identified for you. These are the ONLY same-folder groups you may treat as duplicate/near-duplicate candidates — do not scan the raw file list for other duplicates yourself; comparing dozens of files by eye is exactly where mistakes happen. A sub-note "EXACT same modified timestamp" inside a cluster means those specific files are near-certain duplicates, not just same-day.
+2. "Pre-computed cross-folder duplicate candidates" — filenames that appear in more than one folder. These are the ONLY cross-folder duplicates you may treat as candidates. A group labeled "likely a duplicated folder" with a high shared-file count means one folder is very likely a copy of the other — treat the whole group as one duplicate finding, not dozens of separate ones.
+3. Per-file metadata tags — a file already marked "[OLDER THAN 1 YEAR]" is outdated by definition; do not judge age from the date text yourself.
 
 Respond in EXACTLY this format — two sections, no other text outside them:
 
@@ -870,7 +871,7 @@ Write a clear summary (3-5 paragraphs) covering: key patterns found, each duplic
 }
 
 Rules for the JSON:
-- "duplicate_groups" must come only from the candidate clusters given above — one entry per cluster you confirm is a real duplicate/near-duplicate (skip a cluster if it's clearly not, e.g. a sequence of different screenshots)
+- "duplicate_groups" must come only from the candidate clusters or cross-folder duplicate candidates given above — one entry per group you confirm is a real duplicate/near-duplicate (skip a group if it's clearly not, e.g. a sequence of different screenshots). A "likely a duplicated folder" cross-folder group should become one duplicate_groups entry covering the whole folder, not one per file.
 - "keep" defaults to the newest file in that cluster (already given) unless you have a clear reason to keep a different one — explain why in "reason"
 - "action" must be exactly one of: Keep, Archive, Review, Delete
 - In "actions" include: every non-kept file from a duplicate_groups entry, every file tagged [OLDER THAN 1 YEAR], and any other file you judge worth flagging — skip files that are clearly fine
@@ -1060,7 +1061,7 @@ Rules for the JSON:
 </div>
 
 <footer class="footer">
-  Drive Intelligence &nbsp;·&nbsp; v1.8.6 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
+  Drive Intelligence &nbsp;·&nbsp; v1.8.7 &nbsp;·&nbsp; Enterprise Knowledge Initiative &mdash; PoC
 </footer>
 
 <script>
@@ -1759,6 +1760,59 @@ Rules for the JSON:
       `oldest/newest within a cluster — it is already given above):\n${lines}`;
   }
 
+  // ─── Cross-folder duplicate detection ──────────────────────────────────────
+  // detectCandidateClusters() above only ever compares files within the SAME
+  // folder — it's built for "several versions piling up in one place" and can
+  // never catch the same file existing verbatim in a DIFFERENT folder, e.g. an
+  // entire folder copy-pasted elsewhere. This second pass catches that: group
+  // by filename across the WHOLE file list, ignoring folder, and keep only
+  // names that show up in 2+ distinct folders. When many names share the exact
+  // same pair of folders, that's rolled into one "duplicate folder" finding
+  // instead of dozens of individual same-name pairs.
+  const FOLDER_DUP_THRESHOLD = 5; // shared identically-named files above this = likely a duplicated folder tree
+
+  function detectCrossFolderDuplicates(fileList) {
+    const byName = {};
+    fileList.forEach(f => {
+      const key = f.name.trim().toLowerCase();
+      (byName[key] = byName[key] || []).push(f);
+    });
+
+    const crossFolder = Object.values(byName)
+      .filter(group => new Set(group.map(f => f.folderPath || '(root)')).size >= 2);
+    if (!crossFolder.length) return [];
+
+    // Roll up by the exact set of folders involved.
+    const byFolderSet = {};
+    crossFolder.forEach(group => {
+      const folders = [...new Set(group.map(f => f.folderPath || '(root)'))].sort();
+      const key = folders.join(' | ');
+      const exactMatch = new Set(group.map(f => f.modifiedTime)).size === 1 && !!group[0].modifiedTime;
+      const entry = (byFolderSet[key] = byFolderSet[key] || { folders, files: [], exactCount: 0 });
+      entry.files.push(group[0].name);
+      if (exactMatch) entry.exactCount++;
+    });
+
+    return Object.values(byFolderSet).sort((a, b) => b.files.length - a.files.length);
+  }
+
+  // Renders detected cross-folder duplicate groups as a text block for the AI prompt.
+  function formatCrossFolderDuplicatesForPrompt(groups) {
+    if (!groups.length) return '';
+    const lines = groups.map((g, i) => {
+      const label = g.files.length >= FOLDER_DUP_THRESHOLD
+        ? `likely a duplicated folder (${g.files.length} identically-named files shared between these folders)`
+        : `${g.files.length} file(s) sharing a name across these folders`;
+      const sample = g.files.slice(0, 8).join(', ') + (g.files.length > 8 ? `, +${g.files.length - 8} more` : '');
+      return `Cross-folder group ${i + 1} — ${label}, ${g.exactCount}/${g.files.length} with an EXACT same modified timestamp:\n` +
+        `  Folders: ${g.folders.join('  <->  ')}\n` +
+        `  Files: ${sample}`;
+    }).join('\n\n');
+    return `\n\nPre-computed cross-folder duplicate candidates (same filename found in more than one folder — ` +
+      `these are the ONLY cross-folder duplicates you should treat as candidates; a high shared file count ` +
+      `between two folders means one folder is very likely a duplicate of the other, not a coincidence):\n${lines}`;
+  }
+
   function setPipeline(active, errorStep) {
     for (let i = 1; i <= 5; i++) {
       const el = document.getElementById('pip-' + i);
@@ -1973,8 +2027,10 @@ Rules for the JSON:
       ? `\n\n⚠ Note: Due to the AI token limit, only the first ${AI_HARD_LIMIT} of ${files.length.toLocaleString()} total files are included below. Keep this in mind when summarising coverage.`
       : '';
 
-    // Pre-computed duplicate/near-duplicate candidates — see detectCandidateClusters().
-    const clusterText = formatClustersForPrompt(detectCandidateClusters(filesToAnalyze));
+    // Pre-computed duplicate/near-duplicate candidates — see detectCandidateClusters()
+    // (same folder) and detectCrossFolderDuplicates() (same file, different folder).
+    const clusterText = formatClustersForPrompt(detectCandidateClusters(filesToAnalyze))
+      + formatCrossFolderDuplicatesForPrompt(detectCrossFolderDuplicates(filesToAnalyze));
 
     try {
       // On Vercel: call the secure proxy (key is server-side, never in the browser).

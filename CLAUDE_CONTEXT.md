@@ -1,6 +1,6 @@
 # Project Context for Claude Code
 
-> **Status snapshot — 2026-09-14:** `main`, deployed version **v1.8.6**. Pushed and
+> **Status snapshot — 2026-09-15:** `main`, deployed version **v1.8.7**. Pushed and
 > live on Vercel (auto-deploys from `main`); Luis tests via the Vercel preview since he can't run
 > the app locally. See "Pending tasks" near the bottom for what's still open.
 
@@ -41,7 +41,7 @@ The app detects its environment at runtime:
 
 ---
 
-## Current feature set (v1.8.6)
+## Current feature set (v1.8.7)
 
 - Google Drive recursive folder scan with subfolder path tracking (UI-labeled "FileFolder")
 - SharePoint Excel export import (`.xlsx` / `.xls`) — client-side parsing with SheetJS
@@ -63,6 +63,8 @@ The app detects its environment at runtime:
 
 - **Keep drill-down fix** (v1.8.6): clicking the "Keep" row in Action Totals showed an empty table. Root cause: `aiData.actions` only ever contains files the AI explicitly flagged (Review/Archive/Delete) — the Keep tile's count was always correct arithmetic (`files.length - actions.length`) but had zero real file records behind it, since the AI never emits "Keep" rows itself. Fixed by synthesizing a `{ action: 'Keep', reason: 'No issues detected.' }` entry for every file not present in `aiData.actions`, so the drill-down and "Show all" now reflect every file, not just the flagged ones.
 - **SharePoint date parser fix** (v1.8.6): `processSharePointFile()`'s "Modified" column parser only recognized a native Excel date/time value or a `DD/MM/YYYY H:MM` text string. A real SharePoint export (`SampleData_Demo_1.xlsx`) stores "Modified" as **text** in `YYYY-MM-DD HH:MM:SS` format, which matched neither case — every row silently got `modifiedTime: null`, which in turn disabled `isOld()` age-tagging and `detectCandidateClusters()` entirely (both require a real date) for that whole run, forcing the AI to fall back to guessing rather than judging pre-computed ground truth. Parser now also matches the `YYYY-MM-DD HH:MM[:SS]` format. Verified against the real file: 0/192 rows parsed before the fix, 192/192 after, and cluster detection went from 0 to 19 real clusters (including two 46-file near-duplicate folder trees, `Categories` and `Categories_1`, invisible to the AI before).
+
+- **Cross-folder duplicate detection** (v1.8.7): `detectCandidateClusters()` only ever compares files *within the same folder*, so it could never catch the same file existing verbatim in a *different* folder — e.g. a whole folder tree copy-pasted elsewhere. Luis tested this directly by duplicating a real folder (`Categories` → `Categories_1`, 46 identically-named/identically-timestamped files) and confirmed the AI never mentioned it. Added `detectCrossFolderDuplicates()`: groups files by filename across the *entire* file list regardless of folder, keeps only names appearing in 2+ distinct folders, and rolls up any folder pair sharing 5+ identical names into one "likely a duplicated folder" finding (below that threshold, reported as individual cross-folder file pairs) rather than dozens of one-off entries. Fed to the prompt via `formatCrossFolderDuplicatesForPrompt()` as a third ground-truth block, and the default prompt/JSON-contract rules were updated to reference it alongside the existing same-folder clusters. Verified against Luis's real data: correctly surfaced the 46-file `Categories`/`Categories_1` overlap as one "likely a duplicated folder" finding (46/46 exact timestamp matches) and the pre-existing single-file `Meridian Menu Pricing.xlsx` cross-folder duplicate as a separate, non-rolled-up entry.
 
 **Note on rebrand (v1.8.2):** "OpenAI" → "EngineAI" and "Google Drive" → "FileFolder" is a **UI-text-only** rebrand — 20 visible strings changed (header, badges, labels, alerts, status/error messages). Code internals (variable names, API URLs, localStorage keys, JS comments, `setKeys()` hints) are untouched and still reference OpenAI/Drive under the hood.
 
@@ -179,6 +181,7 @@ Go to Vercel dashboard → Project → Settings → Environment Variables → Ed
 
 ## Recent session log (most recent first)
 
+- **2026-09-15 — v1.8.7, cross-folder duplicate detection.** After verifying v1.8.6 on the Vercel preview, Luis noticed the AI still didn't flag a folder he'd deliberately duplicated (`Categories` → `Categories_1`, 46 files, identical names and timestamps) as a duplicate. Root cause: `detectCandidateClusters()` only ever groups files within the *same* folder — it structurally cannot catch the same file existing in a *different* folder. Added a second, complementary detector (`detectCrossFolderDuplicates()`) that groups by filename across the whole list regardless of folder, and rolls up folder pairs sharing 5+ identical names into one "likely a duplicated folder" finding. Verified against Luis's real data before pushing: correctly identified the 46-file overlap as one finding (46/46 exact timestamp matches).
 - **2026-09-14 — v1.8.6, Keep drill-down + SharePoint date parser fix.** Luis reported that clicking "Keep" in Action Totals showed an empty Flagged Files table, and shared a real AI run (`SampleData_Demo_1.xlsx`, 192-file SharePoint export). Two bugs found and fixed:
   1. **Keep drill-down** — `aiData.actions` only ever contains flagged files (Review/Archive/Delete); Keep's tile count was correct arithmetic but had no real per-file records behind it, so filtering by "Keep" always returned zero rows. Fixed by synthesizing a Keep entry for every file not present in `aiData.actions`.
   2. **SharePoint date parser** — cross-checking the shared JSON against the actual Excel (read directly by unzipping the `.xlsx` and inspecting `sharedStrings.xml`/`sheet1.xml`, since it couldn't be uploaded) showed every one of the 192 rows had `modifiedTime: null`. The "Modified" column is exported as **text** in `YYYY-MM-DD HH:MM:SS` format, which the parser didn't recognize (it only handled native Excel dates or `DD/MM/YYYY H:MM` text) — every row silently fell back to `null`, which disabled `isOld()` age-tagging and `detectCandidateClusters()` for that whole run (both require a real date), forcing the AI to guess instead of judging pre-computed ground truth (it hallucinated a duplicate group and "[OLDER THAN 1 YEAR]" reasons that were never in its actual prompt input). Fixed by extending the parser to also match `YYYY-MM-DD HH:MM[:SS]`. Verified: 0/192 → 192/192 dates parsed, cluster detection 0 → 19 clusters (found two 46-file near-duplicate folder trees, `Categories`/`Categories_1`, previously invisible to the AI).
@@ -193,5 +196,5 @@ Go to Vercel dashboard → Project → Settings → Environment Variables → Ed
 
 ## Pending tasks
 
-- **Luis to verify v1.8.6 on the Vercel preview:** re-run `SampleData_Demo_1.xlsx` and confirm (a) clicking "Keep" now lists files instead of showing empty, (b) the AI's narrative/`duplicate_groups` now reflect real dates — in particular the `Categories` / `Categories_1` folders (46 files each) should surface as a major duplicate-folder finding, which the previous run never mentioned.
+- **Luis to verify v1.8.7 on the Vercel preview:** re-run `SampleData_Demo_1.xlsx` and confirm the AI's narrative/`duplicate_groups` now explicitly call out `Categories`/`Categories_1` as a duplicated folder.
 - No other code changes in flight as of this snapshot.
